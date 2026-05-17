@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/labstack/echo/v5"
 
@@ -94,7 +95,7 @@ func (s *translatedInferenceService) dispatchChatCompletion(c *echo.Context, req
 		}
 		result, err := s.inference().StreamChatCompletion(ctx, workflow, req)
 		if err != nil {
-			return handleError(c, err)
+			return handleStreamingDispatchError(c, err)
 		}
 		if result.Meta.UsedFallback {
 			markRequestFallbackUsed(c)
@@ -237,7 +238,7 @@ func (s *translatedInferenceService) dispatchResponses(c *echo.Context, req *cor
 	if req.Stream {
 		result, err := s.inference().StreamResponses(ctx, workflow, req)
 		if err != nil {
-			return handleError(c, err)
+			return handleStreamingDispatchError(c, err)
 		}
 		if result.Meta.UsedFallback {
 			markRequestFallbackUsed(c)
@@ -485,7 +486,7 @@ func (s *translatedInferenceService) handleStreamingReadCloser(
 
 	c.Response().WriteHeader(http.StatusOK)
 	if err := flushStream(c.Response(), wrappedStream); err != nil {
-		recordStreamingError(streamEntry, model, provider, c.Request().URL.Path, requestID, err)
+		recordStreamingError(streamEntry, model, provider, c.Request().URL.Path, requestID, c.Request().Context(), err)
 	}
 	return nil
 }
@@ -498,27 +499,87 @@ func (s *translatedInferenceService) handleStreamingResponse(
 ) error {
 	stream, err := streamFn()
 	if err != nil {
-		return handleError(c, err)
+		return handleStreamingDispatchError(c, err)
 	}
 	return s.handleStreamingReadCloser(c, workflow, model, provider, providerName, "", stream)
 }
 
-func recordStreamingError(streamEntry *auditlog.LogEntry, model, provider, path, requestID string, err error) {
+// handleStreamingDispatchError records audit context for a streaming request
+// that failed before any chunks could be flushed. It marks the entry as
+// streaming and distinguishes client cancellations from upstream failures so
+// the audit log reflects the actual cause.
+func handleStreamingDispatchError(c *echo.Context, err error) error {
+	auditlog.EnrichEntryWithStream(c, true)
+	if isClientDisconnectDuringDispatch(c.Request().Context(), err) {
+		auditlog.EnrichEntryWithError(c, "client_disconnected", err.Error(), "")
+		return nil
+	}
+	return handleError(c, err)
+}
+
+func recordStreamingError(streamEntry *auditlog.LogEntry, model, provider, path, requestID string, ctx context.Context, err error) {
+	errorType := "stream_error"
+	if isClientDisconnect(ctx, err) {
+		errorType = "client_disconnected"
+	}
+
+	// The nil-err branch in isClientDisconnect is reachable for callers that
+	// only have a canceled context to report. Fall back to the context error
+	// in that case so we never dereference a nil error.
+	logErr := err
+	errorMessage := ""
+	switch {
+	case err != nil:
+		errorMessage = err.Error()
+	case ctx != nil && ctx.Err() != nil:
+		logErr = ctx.Err()
+		errorMessage = logErr.Error()
+	}
+
 	if streamEntry != nil {
-		streamEntry.ErrorType = "stream_error"
+		streamEntry.ErrorType = errorType
 		if streamEntry.Data == nil {
 			streamEntry.Data = &auditlog.LogData{}
 		}
-		streamEntry.Data.ErrorMessage = err.Error()
+		streamEntry.Data.ErrorMessage = errorMessage
 	}
 
 	slog.Warn("stream terminated abnormally",
-		"error", err,
+		"error", logErr,
+		"error_type", errorType,
 		"model", model,
 		"provider", provider,
 		"path", path,
 		"request_id", requestID,
 	)
+}
+
+// isClientDisconnect classifies write-phase streaming errors (errors returned
+// after the gateway has begun writing the SSE response back to the client). At
+// this phase EPIPE / ECONNRESET on the response writer can only come from the
+// downstream client connection, so they are treated as client disconnects. The
+// nil-err / canceled-context branch supports callers that only have a context
+// signal to report.
+func isClientDisconnect(ctx context.Context, err error) bool {
+	if errors.Is(err, context.Canceled) || errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) {
+		return true
+	}
+	return err == nil && ctx != nil && ctx.Err() == context.Canceled
+}
+
+// isClientDisconnectDuringDispatch classifies a streaming dispatch error - one
+// that happened before any response bytes were flushed to the client. At this
+// phase the only socket in play is the upstream provider connection, so
+// EPIPE / ECONNRESET on err belong to the provider and must NOT be swallowed
+// as client disconnects. Only a cancellation of the request context proves
+// the client is gone. The ctx-only branch still requires err == nil so a
+// concrete upstream failure racing with a cancellation surfaces as a real
+// upstream error.
+func isClientDisconnectDuringDispatch(ctx context.Context, err error) bool {
+	if errors.Is(err, context.Canceled) {
+		return true
+	}
+	return err == nil && ctx != nil && ctx.Err() == context.Canceled
 }
 
 func providerNameFromWorkflow(workflow *core.Workflow) string {

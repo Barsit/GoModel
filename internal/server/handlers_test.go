@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"maps"
 	"mime/multipart"
@@ -15,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -2648,6 +2650,180 @@ func TestHandleStreamingResponse_RecordsStreamingError(t *testing.T) {
 	}
 	if entry.Data == nil || entry.Data.ErrorMessage != expectedErr.Error() {
 		t.Fatalf("expected error message %q, got %+v", expectedErr.Error(), entry.Data)
+	}
+}
+
+func TestHandleStreamingResponse_ClientDisconnectBeforeUpstream(t *testing.T) {
+	e := echo.New()
+	handler := NewHandler(&mockProvider{}, nil, nil, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	ctx, cancel := context.WithCancel(req.Context())
+	cancel() // simulate client gone before streamFn returns
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	entry := &auditlog.LogEntry{
+		ID:        "entry-cancel",
+		Timestamp: time.Now(),
+		Method:    http.MethodPost,
+		Path:      "/v1/chat/completions",
+		Data:      &auditlog.LogData{},
+	}
+	c.Set(string(auditlog.LogEntryKey), entry)
+
+	err := handler.translatedInference().handleStreamingResponse(c, nil, "gpt-4o-mini", "openai", "primary-openai", func() (io.ReadCloser, error) {
+		return nil, context.Canceled
+	})
+	if err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+
+	if !entry.Stream {
+		t.Fatalf("expected entry.Stream=true, got false")
+	}
+	if entry.ErrorType != "client_disconnected" {
+		t.Fatalf("expected error_type client_disconnected, got %q", entry.ErrorType)
+	}
+}
+
+// At pre-flush dispatch time the only socket in play is the upstream
+// provider connection, so EPIPE / ECONNRESET on the error from streamFn
+// belong to the provider and must surface as upstream failures rather than
+// be swallowed as client disconnects.
+func TestHandleStreamingResponse_UpstreamResetIsNotClassifiedAsClientDisconnect(t *testing.T) {
+	logger := &capturingAuditLogger{
+		config: auditlog.Config{Enabled: true},
+	}
+
+	e := echo.New()
+	handler := NewHandler(&mockProvider{}, logger, nil, nil)
+
+	for _, tt := range []struct {
+		name string
+		err  error
+	}{
+		{name: "bare syscall.ECONNRESET", err: syscall.ECONNRESET},
+		{name: "wrapped syscall.EPIPE", err: fmt.Errorf("dial upstream: %w", syscall.EPIPE)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+			entry := &auditlog.LogEntry{
+				ID:        "entry-upstream-reset",
+				Timestamp: time.Now(),
+				Method:    http.MethodPost,
+				Path:      "/v1/chat/completions",
+				Data:      &auditlog.LogData{},
+			}
+			c.Set(string(auditlog.LogEntryKey), entry)
+
+			err := handler.translatedInference().handleStreamingResponse(c, nil, "gpt-4o-mini", "openai", "primary-openai", func() (io.ReadCloser, error) {
+				return nil, tt.err
+			})
+
+			// handleStreamingResponse always swallows the error by writing a
+			// JSON response via handleError; the gateway response must be the
+			// upstream failure, not an empty 200.
+			if err != nil {
+				t.Fatalf("handler returned error: %v", err)
+			}
+			if rec.Code == http.StatusOK {
+				t.Fatalf("upstream reset surfaced as 200 OK; want non-2xx, got body=%q", rec.Body.String())
+			}
+			if entry.ErrorType == "client_disconnected" {
+				t.Fatalf("upstream reset misclassified as client_disconnected (err=%v)", tt.err)
+			}
+			if !entry.Stream {
+				t.Fatalf("expected entry.Stream=true regardless of classification, got false")
+			}
+		})
+	}
+}
+
+func TestRecordStreamingError_ClassifiesClientDisconnect(t *testing.T) {
+	canceledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	tests := []struct {
+		name      string
+		ctx       context.Context
+		err       error
+		wantType  string
+	}{
+		{
+			name:     "explicit context.Canceled",
+			ctx:      context.Background(),
+			err:      context.Canceled,
+			wantType: "client_disconnected",
+		},
+		{
+			name:     "wrapped context.Canceled",
+			ctx:      context.Background(),
+			err:      fmt.Errorf("upstream send failed: %w", context.Canceled),
+			wantType: "client_disconnected",
+		},
+		{
+			name:     "syscall.EPIPE",
+			ctx:      context.Background(),
+			err:      syscall.EPIPE,
+			wantType: "client_disconnected",
+		},
+		{
+			name:     "wrapped syscall.EPIPE",
+			ctx:      context.Background(),
+			err:      fmt.Errorf("write to client: %w", syscall.EPIPE),
+			wantType: "client_disconnected",
+		},
+		{
+			name:     "syscall.ECONNRESET",
+			ctx:      context.Background(),
+			err:      syscall.ECONNRESET,
+			wantType: "client_disconnected",
+		},
+		{
+			name:     "canceled ctx racing real upstream error stays stream_error",
+			ctx:      canceledCtx,
+			err:      errors.New("upstream malformed"),
+			wantType: "stream_error",
+		},
+		{
+			name:     "clean ctx and generic error",
+			ctx:      context.Background(),
+			err:      errors.New("upstream malformed"),
+			wantType: "stream_error",
+		},
+		{
+			// Exercises the err==nil branch of isClientDisconnect and the
+			// matching nil-guard fallback in recordStreamingError. Must not
+			// panic and must record the context error as the message.
+			name:     "canceled ctx with nil err",
+			ctx:      canceledCtx,
+			err:      nil,
+			wantType: "client_disconnected",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entry := &auditlog.LogEntry{Data: &auditlog.LogData{}}
+			recordStreamingError(entry, "gpt-4o-mini", "openai", "/v1/chat/completions", "req-"+tt.name, tt.ctx, tt.err)
+			if entry.ErrorType != tt.wantType {
+				t.Fatalf("error_type = %q, want %q", entry.ErrorType, tt.wantType)
+			}
+
+			wantMessage := ""
+			switch {
+			case tt.err != nil:
+				wantMessage = tt.err.Error()
+			case tt.ctx != nil && tt.ctx.Err() != nil:
+				wantMessage = tt.ctx.Err().Error()
+			}
+			if entry.Data.ErrorMessage != wantMessage {
+				t.Fatalf("error_message = %q, want %q", entry.Data.ErrorMessage, wantMessage)
+			}
+		})
 	}
 }
 
