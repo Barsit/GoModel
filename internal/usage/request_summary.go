@@ -32,7 +32,7 @@ func SummarizeRequestUsage(entries []UsageLogEntry) *RequestUsageSummary {
 
 	summary := &RequestUsageSummary{}
 	for _, entry := range entries {
-		uncachedInput, cachedInput, cacheWriteInput := requestInputSegments(entry)
+		uncachedInput, cachedInput, cacheWriteInput := EntryInputSegments(entry)
 		totalInput := uncachedInput + cachedInput + cacheWriteInput
 
 		summary.Entries++
@@ -52,16 +52,27 @@ func SummarizeRequestUsage(entries []UsageLogEntry) *RequestUsageSummary {
 	return summary
 }
 
-func requestInputSegments(entry UsageLogEntry) (uncachedInput, cachedInput, cacheWriteInput int64) {
+// EntryInputSegments splits one usage log entry's input tokens into the
+// provider-uncached prompt, the provider-cached read, and the provider cache
+// write portions. Provider-specific quirks are handled here so callers —
+// request summaries, the admin usage log, and the live SSE preview — stay in
+// sync. The various provider field names are coalesced via max:
+//   - cached reads: cache_read_input_tokens (Anthropic, Bedrock),
+//     prompt_cached_tokens (OpenAI, DeepSeek), cached_tokens (Gemini)
+//   - cache writes: cache_creation_input_tokens (Anthropic),
+//     cache_write_input_tokens (Bedrock Converse)
+func EntryInputSegments(entry UsageLogEntry) (uncachedInput, cachedInput, cacheWriteInput int64) {
 	cacheReadTopLevel := int64(extractInt(entry.RawData, "cache_read_input_tokens"))
 	cacheReadNormalized := int64(extractInt(entry.RawData, "prompt_cached_tokens"))
 	cacheReadGeneric := int64(extractInt(entry.RawData, "cached_tokens"))
-	cacheWriteInput = int64(extractInt(entry.RawData, "cache_creation_input_tokens"))
+	cacheWriteCreation := int64(extractInt(entry.RawData, "cache_creation_input_tokens"))
+	cacheWriteGeneric := int64(extractInt(entry.RawData, "cache_write_input_tokens"))
+	cacheWriteInput = maxInt64(cacheWriteCreation, cacheWriteGeneric)
 
 	cachedInput = maxInt64(cacheReadTopLevel, cacheReadNormalized, cacheReadGeneric)
 	baseInput := int64(entry.InputTokens)
 
-	if requestUsesSplitPromptCacheAccounting(entry, cacheReadTopLevel, cacheWriteInput) {
+	if entryUsesSplitPromptCacheAccounting(entry, cacheReadTopLevel, cacheWriteInput) {
 		return baseInput, cachedInput, cacheWriteInput
 	}
 
@@ -72,7 +83,7 @@ func requestInputSegments(entry UsageLogEntry) (uncachedInput, cachedInput, cach
 	return uncachedInput, cachedInput, cacheWriteInput
 }
 
-func requestUsesSplitPromptCacheAccounting(entry UsageLogEntry, cacheReadInput, cacheWriteInput int64) bool {
+func entryUsesSplitPromptCacheAccounting(entry UsageLogEntry, cacheReadInput, cacheWriteInput int64) bool {
 	if cacheReadInput > 0 || cacheWriteInput > 0 {
 		return true
 	}

@@ -282,6 +282,7 @@
                     if (resetOffset) this.usageLog.offset = 0;
                     let qs = this._usageQueryStr();
                     qs += '&limit=' + this.usageLog.limit + '&offset=' + this.usageLog.offset;
+                    qs += '&cache_mode=' + (this.usageLogHideCached ? 'uncached' : 'all');
                     if (this.usageLogSearch) qs += '&search=' + encodeURIComponent(this.usageLogSearch);
                     if (this.usageLogModel) qs += '&model=' + encodeURIComponent(this.usageLogModel);
                     if (this.usageLogProvider) qs += '&provider=' + encodeURIComponent(this.usageLogProvider);
@@ -357,6 +358,58 @@
                     }
                 });
                 return [...set].sort();
+            },
+
+            usageEntryCacheType(entry) {
+                return String((entry && entry.cache_type) || '').trim().toLowerCase();
+            },
+
+            usageEntryCached(entry) {
+                const type = this.usageEntryCacheType(entry);
+                return type === 'exact' || type === 'semantic';
+            },
+
+            usageEntryCacheLabel(entry) {
+                const type = this.usageEntryCacheType(entry);
+                if (type === 'exact') return 'Exact';
+                if (type === 'semantic') return 'Semantic';
+                return '-';
+            },
+
+            cachedCostTitle(entry, baseTitle) {
+                const base = baseTitle ? String(baseTitle) : '';
+                if (!this.usageEntryCached(entry)) return base;
+                const prefix = 'Saved by cache — not charged';
+                return base ? prefix + '\n' + base : prefix;
+            },
+
+            providerCacheRatio(entry) {
+                const ratio = Number(entry && entry.cached_input_ratio);
+                if (!Number.isFinite(ratio) || ratio <= 0) return 0;
+                return Math.min(1, ratio);
+            },
+
+            hasProviderCache(entry) {
+                return Number(entry && entry.cached_input_tokens || 0) > 0;
+            },
+
+            providerCacheLabel(entry) {
+                if (!this.hasProviderCache(entry)) return '';
+                const pct = this.providerCacheRatio(entry) * 100;
+                return pct.toFixed(1) + '%';
+            },
+
+            providerCacheTitle(entry) {
+                if (!this.hasProviderCache(entry)) return '';
+                const cached = Number(entry.cached_input_tokens || 0);
+                const uncached = Number(entry.uncached_input_tokens || 0);
+                const write = Number(entry.cache_write_input_tokens || 0);
+                const total = cached + uncached + write;
+                const parts = [this.formatNumber(cached) + ' cached / ' + this.formatNumber(total) + ' input tokens'];
+                if (write > 0) {
+                    parts.push(this.formatNumber(write) + ' cache write');
+                }
+                return parts.join('\n');
             },
 
             usesOpenRouterCreditPricing(entry) {

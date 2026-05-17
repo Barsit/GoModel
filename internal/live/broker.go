@@ -441,22 +441,15 @@ func (b *Broker) PublishAuditEvent(eventType string, entry *auditlog.LogEntry) {
 	b.publish(eventType, entry.RequestID, entry.Timestamp, payload)
 }
 
-// PublishUsageEvent publishes a compact usage log event.
+// PublishUsageEvent publishes a compact usage log event. Cached usage entries
+// are broadcast like any other so the dashboard can choose to surface or hide
+// them via the "Hide cached requests" toggle on the Usage page.
 func (b *Broker) PublishUsageEvent(eventType string, entry *usage.UsageEntry) {
-	if entry == nil || cachedUsageEntry(entry) {
+	if entry == nil {
 		return
 	}
 	payload := usagePreviewFromEntry(entry)
 	b.publish(eventType, entry.RequestID, entry.Timestamp, payload)
-}
-
-func cachedUsageEntry(entry *usage.UsageEntry) bool {
-	switch strings.ToLower(strings.TrimSpace(entry.CacheType)) {
-	case usage.CacheTypeExact, usage.CacheTypeSemantic:
-		return true
-	default:
-		return false
-	}
 }
 
 type auditPreview struct {
@@ -587,7 +580,7 @@ func auditEventTerminal(eventType string) bool {
 }
 
 func usagePreviewFromEntry(entry *usage.UsageEntry) usage.UsageLogEntry {
-	return usage.UsageLogEntry{
+	preview := usage.UsageLogEntry{
 		ID:                     entry.ID,
 		RequestID:              entry.RequestID,
 		ProviderID:             entry.ProviderID,
@@ -608,6 +601,8 @@ func usagePreviewFromEntry(entry *usage.UsageEntry) usage.UsageLogEntry {
 		RawData:                copyRawData(entry.RawData),
 		CostsCalculationCaveat: entry.CostsCalculationCaveat,
 	}
+	usage.EnrichUsageLogEntry(&preview)
+	return preview
 }
 
 func copyRawData(src map[string]any) map[string]any {
