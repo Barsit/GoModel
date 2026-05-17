@@ -254,7 +254,7 @@ function dashboard() {
       }
     },
 
-    init() {
+    async init() {
       if (typeof this.initTimeZoneState === "function") {
         this.initTimeZoneState();
       }
@@ -285,7 +285,13 @@ function dashboard() {
           }
         });
 
-      this.fetchAll();
+      try {
+        await this.fetchAll();
+      } finally {
+        if (typeof this.startLiveLogs === "function") {
+          this.startLiveLogs();
+        }
+      }
     },
 
     toggleSidebar() {
@@ -501,7 +507,7 @@ function dashboard() {
       }
     },
 
-    submitApiKey() {
+    async submitApiKey() {
       const apiKey = this.normalizeApiKey(this.apiKey);
       if (!apiKey) {
         this.apiKey = "";
@@ -516,7 +522,16 @@ function dashboard() {
       this.authError = false;
       this.needsAuth = false;
       this.closeAuthDialog();
-      this.fetchAll();
+      if (typeof this.stopLiveLogs === "function") {
+        this.stopLiveLogs();
+      }
+      try {
+        await this.fetchAll();
+      } finally {
+        if (typeof this.startLiveLogs === "function") {
+          this.startLiveLogs();
+        }
+      }
     },
 
     headers() {
@@ -1066,6 +1081,12 @@ function dashboard() {
         ? dashboardAuditListModule
         : null,
       "dashboardAuditListModule",
+    ),
+    resolveModuleFactory(
+      typeof dashboardLiveLogsModule === "function"
+        ? dashboardLiveLogsModule
+        : null,
+      "dashboardLiveLogsModule",
     ),
     resolveModuleFactory(
       typeof dashboardAliasesModule === "function"

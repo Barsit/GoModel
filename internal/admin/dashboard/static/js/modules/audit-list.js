@@ -155,7 +155,7 @@
                     }
                     const payload = await res.json();
                     if (requestToken !== this.auditFetchToken) return;
-                    this.auditLog = payload;
+                    this.auditLog = this.auditLogWithLiveEntries(payload, this.auditLog && this.auditLog.entries);
                     if (!this.auditLog.entries) this.auditLog.entries = [];
                     this.pruneAuditExpandedEntries(this.auditLog.entries);
                     if (typeof this.prefetchAuditWorkflows === 'function') {
@@ -170,6 +170,70 @@
                     if (requestToken !== this.auditFetchToken) return;
                     this.auditLog = { entries: [], total: 0, limit: 25, offset: 0 };
                 }
+            },
+
+            auditLogWithLiveEntries(payload, currentEntries) {
+                const next = payload && typeof payload === 'object'
+                    ? { ...payload }
+                    : { entries: [], total: 0, limit: 25, offset: 0 };
+                const entries = Array.isArray(next.entries) ? next.entries : [];
+                next.entries = entries;
+                if (!this.auditLogAllowsLiveEntries(next)) return next;
+
+                const liveEntries = (Array.isArray(currentEntries) ? currentEntries : [])
+                    .filter((entry) => this.auditEntryLivePreviewPending(entry));
+                if (liveEntries.length === 0) return next;
+
+                const persistedKeys = new Set(entries.flatMap((entry) => this.auditEntryIdentityKeys(entry)));
+                const prepend = [];
+                liveEntries.forEach((entry) => {
+                    const keys = this.auditEntryIdentityKeys(entry);
+                    if (keys.length === 0) return;
+                    if (keys.some((key) => persistedKeys.has(key))) return;
+                    keys.forEach((key) => persistedKeys.add(key));
+                    prepend.push(entry);
+                });
+                if (prepend.length === 0) return next;
+
+                next.entries = [...prepend, ...entries].slice(0, next.limit || 25);
+                next.total = Number(next.total || 0) + prepend.length;
+                return next;
+            },
+
+            auditLogAllowsLiveEntries(payload) {
+                return payload && Number(payload.offset || 0) === 0 &&
+                    !this.auditSearch && !this.auditMethod && !this.auditStatusCode && !this.auditStream &&
+                    this.auditLiveDateRangeAllowsNow();
+            },
+
+            auditLiveDateRangeAllowsNow() {
+                if (!this.customStartDate && !this.customEndDate) return true;
+                const now = new Date();
+                if (this.customStartDate) {
+                    const start = new Date(this.customStartDate);
+                    start.setHours(0, 0, 0, 0);
+                    if (Number.isFinite(start.getTime()) && now < start) return false;
+                }
+                if (this.customEndDate) {
+                    const end = new Date(this.customEndDate);
+                    end.setHours(23, 59, 59, 999);
+                    if (Number.isFinite(end.getTime()) && now > end) return false;
+                }
+                return true;
+            },
+
+            auditEntryLivePreviewPending(entry) {
+                return !!(entry && entry._live && entry._live_pending && !entry._audit_flushed);
+            },
+
+            auditEntryIdentityKeys(entry) {
+                if (!entry) return [];
+                const keys = [];
+                const id = String(entry.id || '').trim();
+                const requestID = String(entry.request_id || '').trim();
+                if (id) keys.push('id:' + id);
+                if (requestID) keys.push('request:' + requestID);
+                return keys;
             },
 
             auditEntryKey(entry) {
@@ -237,9 +301,32 @@
 
             formatDurationNs(ns) {
                 if (ns == null) return '-';
-                if (ns < 1000000) return Math.round(ns / 1000) + ' \u00b5s';
-                if (ns < 1000000000) return (ns / 1000000).toFixed(2) + ' ms';
-                return (ns / 1000000000).toFixed(2) + ' s';
+                const v = Number(ns);
+                if (!Number.isFinite(v)) return '-';
+                if (v <= 0) return 'pending';
+                if (v < 1000000) return Math.round(v / 1000) + ' \u00b5s';
+                if (v < 1000000000) return (v / 1000000).toFixed(2) + ' ms';
+                return (v / 1000000000).toFixed(2) + ' s';
+            },
+
+            auditEntrySummaryClass(entry) {
+                return {
+                    'audit-entry-summary-live-in-progress': this.auditEntryLiveInProgress(entry)
+                };
+            },
+
+            auditEntryLiveInProgress(entry) {
+                if (!entry || !entry._live || !entry._live_pending) return false;
+                const liveState = String(entry._live_state || '').trim();
+                if (liveState === 'audit.completed' || liveState === 'audit.flushed' || liveState === 'audit.detail') {
+                    return false;
+                }
+                if (entry.status_code !== null && entry.status_code !== undefined && entry.status_code !== '') return false;
+                if (Number(entry.duration_ns || 0) > 0) return false;
+                if (entry.error_type || entry.error_message) return false;
+
+                const data = entry.data || {};
+                return !(data.response_headers || data.response_body || data.error_message);
             },
 
             handleAuditEntryToggle(event, entry) {
@@ -248,6 +335,9 @@
 
                 if (detailsEl.open) {
                     this.markAuditEntryExpanded(entry);
+                    if (typeof this.fetchAuditEntryDetail === 'function') {
+                        this.fetchAuditEntryDetail(entry);
+                    }
                 }
             },
 
@@ -432,6 +522,14 @@
 
                     copyHeaders() {
                         return this.copyHeadersState.copy(this.pane.copyHeaders, formatJSON);
+                    },
+
+                    syncPane(nextPane) {
+                        this.pane = nextPane;
+                        this.formattedHeaders = nextPane && nextPane.showHeaders ? formatJSON(nextPane.headers) : '';
+                        this.renderedBody = nextPane && nextPane.showBody
+                            ? renderBody(nextPane.entry, nextPane.body, { promptCacheHighlight: nextPane.promptCacheHighlight })
+                            : '';
                     }
                 };
             }

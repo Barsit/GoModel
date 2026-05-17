@@ -13,6 +13,7 @@
   --accent: #b8956e;
   --accent-hover: #d4b896;
   --success: #34d399;
+  --info: #3b82f6;
   --warning: #f59e0b;
   --danger: #ef4444;
   --prompt-cache-color: #40a811;
@@ -53,6 +54,7 @@
   --accent: #755c3d;
   --accent-hover: #9a7d5a;
   --success: #34d399;
+  --info: #2563eb;
   --warning: #d97706;
   --danger: #dc2626;
   --prompt-cache-color: #40a811;
@@ -92,6 +94,7 @@
     --accent: #755c3d;
     --accent-hover: #9a7d5a;
     --success: #34d399;
+    --info: #2563eb;
     --warning: #d97706;
     --danger: #dc2626;
     --prompt-cache-color: #40a811;
@@ -2527,8 +2530,40 @@ textarea:focus {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 14px;
+  padding: 5px 14px;
+  position: relative;
   cursor: pointer;
+}
+
+.audit-entry-summary-live-in-progress {
+  background: color-mix(in srgb, var(--info) 7%, var(--bg));
+}
+
+.audit-entry-summary-live-in-progress::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--info);
+  pointer-events: none;
+  animation: audit-live-summary-stripe-blink 1.2s ease-in-out infinite;
+}
+
+@keyframes audit-live-summary-stripe-blink {
+  0%,
+  100% {
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 0.28;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .audit-entry-summary-live-in-progress::before {
+    animation: none;
+    opacity: 0.78;
+  }
 }
 
 .audit-entry-summary::-webkit-details-marker {
@@ -4915,6 +4950,34 @@ body.conversation-drawer-open {
   background: color-mix(in srgb, var(--success) 14%, var(--bg));
   border-color: color-mix(in srgb, var(--success) 38%, var(--border));
   color: var(--success);
+}
+
+.workflow-node-current {
+  border-color: color-mix(in srgb, var(--info) 56%, var(--border));
+  background: color-mix(in srgb, var(--info) 10%, var(--bg-surface));
+}
+
+.workflow-node-current .workflow-node-icon {
+  background: color-mix(in srgb, var(--info) 16%, var(--bg));
+  color: var(--info);
+}
+
+.workflow-node-current .workflow-node-icon-endpoint {
+  color: var(--info);
+}
+
+.workflow-node-current .workflow-node-label {
+  color: color-mix(in srgb, var(--info) 85%, var(--text));
+}
+
+.workflow-node-current .workflow-node-sub {
+  color: color-mix(in srgb, var(--info) 72%, var(--text-muted));
+}
+
+.workflow-node-current .workflow-node-badge {
+  background: color-mix(in srgb, var(--info) 13%, var(--bg));
+  border-color: color-mix(in srgb, var(--info) 36%, var(--border));
+  color: var(--info);
 }
 
 .workflow-node-warning {

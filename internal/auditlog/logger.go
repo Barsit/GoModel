@@ -20,6 +20,8 @@ type Logger struct {
 	writes        sync.WaitGroup // tracks in-flight Write calls
 	flushInterval time.Duration
 	closed        atomic.Bool
+	liveMu        sync.RWMutex
+	livePublisher LiveEventPublisher
 }
 
 // NewLogger creates a new async buffered Logger.
@@ -68,10 +70,11 @@ func (l *Logger) Write(entry *LogEntry) {
 		return
 	}
 
+	l.PublishLiveEvent(LiveEventAuditCompleted, entry)
 	select {
 	case l.buffer <- entry:
-		// Entry queued successfully
 	default:
+		l.PublishLiveEvent(LiveEventAuditRemoved, entry)
 		// Buffer full - drop entry and log warning
 		requestID := entry.RequestID
 		if requestID == "" {
@@ -82,6 +85,30 @@ func (l *Logger) Write(entry *LogEntry) {
 			"requested_model", entry.RequestedModel,
 		)
 	}
+}
+
+// SetLivePublisher attaches the optional realtime dashboard publisher.
+func (l *Logger) SetLivePublisher(p LiveEventPublisher) {
+	if l == nil {
+		return
+	}
+	l.liveMu.Lock()
+	defer l.liveMu.Unlock()
+	l.livePublisher = p
+}
+
+// PublishLiveEvent publishes a compact lifecycle preview when live logs are enabled.
+func (l *Logger) PublishLiveEvent(eventType string, entry *LogEntry) {
+	if l == nil || entry == nil {
+		return
+	}
+	l.liveMu.RLock()
+	publisher := l.livePublisher
+	l.liveMu.RUnlock()
+	if publisher == nil {
+		return
+	}
+	publisher.PublishAuditEvent(eventType, entry)
 }
 
 // Config returns the logger configuration
@@ -180,6 +207,14 @@ func (l *Logger) flushBatch(batch []*LogEntry) {
 			"error", err,
 			"count", len(batch),
 		)
+		for _, entry := range batch {
+			l.PublishLiveEvent(LiveEventAuditFailed, entry)
+		}
+		return
+	}
+
+	for _, entry := range batch {
+		l.PublishLiveEvent(LiveEventAuditFlushed, entry)
 	}
 }
 

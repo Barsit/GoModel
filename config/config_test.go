@@ -58,6 +58,8 @@ func clearAllConfigEnvVars(t *testing.T) {
 		"USAGE_PRICING_RECALCULATION_ENABLED",
 		"USAGE_BUFFER_SIZE", "USAGE_FLUSH_INTERVAL", "USAGE_RETENTION_DAYS",
 		"BUDGETS_ENABLED",
+		"DASHBOARD_LIVE_LOGS_ENABLED", "DASHBOARD_LIVE_LOGS_BUFFER_SIZE",
+		"DASHBOARD_LIVE_LOGS_REPLAY_LIMIT", "DASHBOARD_LIVE_LOGS_HEARTBEAT_SECONDS",
 		"GUARDRAILS_ENABLED", "ENABLE_GUARDRAILS_FOR_BATCH_PROCESSING",
 		"FEATURE_FALLBACK_MODE", "FALLBACK_MANUAL_RULES_PATH",
 		"MODEL_OVERRIDES_ENABLED", "MODELS_ENABLED_BY_DEFAULT", "KEEP_ONLY_ALIASES_AT_MODELS_ENDPOINT", "CONFIGURED_PROVIDER_MODELS_MODE",
@@ -196,6 +198,24 @@ func TestBuildDefaultConfig(t *testing.T) {
 	}
 	if cfg.Workflows.RefreshInterval != time.Minute {
 		t.Errorf("expected Workflows.RefreshInterval=%s, got %s", time.Minute, cfg.Workflows.RefreshInterval)
+	}
+	if !cfg.Admin.EndpointsEnabled {
+		t.Error("expected Admin.EndpointsEnabled=true")
+	}
+	if !cfg.Admin.UIEnabled {
+		t.Error("expected Admin.UIEnabled=true")
+	}
+	if !cfg.Admin.LiveLogsEnabled {
+		t.Error("expected Admin.LiveLogsEnabled=true")
+	}
+	if cfg.Admin.LiveLogsBufferSize != 10000 {
+		t.Errorf("expected Admin.LiveLogsBufferSize=10000, got %d", cfg.Admin.LiveLogsBufferSize)
+	}
+	if cfg.Admin.LiveLogsReplayLimit != 1000 {
+		t.Errorf("expected Admin.LiveLogsReplayLimit=1000, got %d", cfg.Admin.LiveLogsReplayLimit)
+	}
+	if cfg.Admin.LiveLogsHeartbeatSeconds != 15 {
+		t.Errorf("expected Admin.LiveLogsHeartbeatSeconds=15, got %d", cfg.Admin.LiveLogsHeartbeatSeconds)
 	}
 	if !cfg.Models.EnabledByDefault {
 		t.Error("expected Models.EnabledByDefault=true")

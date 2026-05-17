@@ -26,6 +26,7 @@ import (
 	"gomodel/internal/fallback"
 	"gomodel/internal/filestore"
 	"gomodel/internal/guardrails"
+	"gomodel/internal/live"
 	"gomodel/internal/modeloverrides"
 	"gomodel/internal/pricingoverrides"
 	"gomodel/internal/providers"
@@ -52,6 +53,7 @@ type App struct {
 	authKeys         *authkeys.Result
 	guardrails       *guardrails.Result
 	workflows        *workflows.Result
+	live             *live.Broker
 	server           *server.Server
 
 	shutdownMu  sync.Mutex
@@ -101,6 +103,12 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 	app := &App{
 		config: appCfg,
 	}
+	app.live = live.NewBroker(live.Config{
+		Enabled:     appCfg.Admin.LiveLogsEnabled,
+		BufferSize:  appCfg.Admin.LiveLogsBufferSize,
+		ReplayLimit: appCfg.Admin.LiveLogsReplayLimit,
+		Heartbeat:   time.Duration(appCfg.Admin.LiveLogsHeartbeatSeconds) * time.Second,
+	})
 
 	providerResult, err := providers.Init(ctx, cfg.AppConfig, cfg.Factory)
 	if err != nil {
@@ -444,6 +452,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		slog.Warn("ADMIN_UI_ENABLED=true requires ADMIN_ENDPOINTS_ENABLED=true — forcing UI to disabled")
 		adminCfg.UIEnabled = false
 	}
+	livePublishersEnabled := false
 	usageEnabledForDashboard := usageResult.Logger.Config().Enabled
 	if adminCfg.EndpointsEnabled {
 		adminHandler, dashHandler, adminErr := initAdmin(
@@ -460,6 +469,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 			budgetResult.Service,
 			app,
 			dashboardRuntimeConfig(appCfg, usageEnabledForDashboard),
+			app.live,
 			usagePricingRecalculationConfigured(appCfg),
 			appCfg.Server.BasePath,
 			adminCfg.UIEnabled,
@@ -469,6 +479,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		} else {
 			serverCfg.AdminEndpointsEnabled = true
 			serverCfg.AdminHandler = adminHandler
+			livePublishersEnabled = true
 			slog.Info("admin API enabled",
 				"api", config.JoinBasePath(appCfg.Server.BasePath, "/admin"),
 				"legacy_alias", config.JoinBasePath(appCfg.Server.BasePath, "/admin/api/v1"),
@@ -567,6 +578,9 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		return nil, fmt.Errorf("failed to refresh workflows after wiring internal guardrail executor: %w", err)
 	}
 
+	if livePublishersEnabled {
+		app.attachLivePublishers()
+	}
 	app.server = server.New(provider, serverCfg)
 
 	return app, nil
@@ -594,6 +608,26 @@ func (a *App) UsageLogger() usage.LoggerInterface {
 		return nil
 	}
 	return a.usage.Logger
+}
+
+func (a *App) attachLivePublishers() {
+	if a == nil || a.live == nil || !a.live.Enabled() {
+		return
+	}
+	if a.audit != nil {
+		if logger, ok := a.audit.Logger.(interface {
+			SetLivePublisher(auditlog.LiveEventPublisher)
+		}); ok {
+			logger.SetLivePublisher(a.live)
+		}
+	}
+	if a.usage != nil {
+		if logger, ok := a.usage.Logger.(interface {
+			SetLivePublisher(usage.LiveEventPublisher)
+		}); ok {
+			logger.SetLivePublisher(a.live)
+		}
+	}
 }
 
 func providerAsNativeFileRouter(provider core.RoutableProvider) core.NativeFileRoutableProvider {
@@ -663,7 +697,7 @@ func (a *App) startServer(ctx context.Context, address string, start func(contex
 
 // Shutdown gracefully tears down app components in dependency order.
 // Order:
-// 1. Cancel HTTP server context and wait for the server to stop.
+// 1. Cancel HTTP server context, close live streams, and wait for the server to stop.
 // 2. Provider subsystem close (stops model refresh loop and cache resources).
 // 3. Batch store close.
 // 4. Usage logger close (flushes pending usage records).
@@ -691,6 +725,9 @@ func (a *App) Shutdown(ctx context.Context) error {
 	a.serverMu.Unlock()
 	if serverStop != nil {
 		serverStop()
+	}
+	if a.live != nil {
+		a.live.Close()
 	}
 	if serverDone != nil {
 		select {
@@ -881,6 +918,7 @@ func initAdmin(
 	budgetService *budget.Service,
 	runtimeRefresher admin.RuntimeRefresher,
 	runtimeConfig admin.DashboardConfigResponse,
+	liveBroker *live.Broker,
 	usagePricingRecalculationEnabled bool,
 	basePath string,
 	uiEnabled bool,
@@ -939,6 +977,7 @@ func initAdmin(
 		admin.WithBudgets(budgetService),
 		admin.WithRuntimeRefresher(runtimeRefresher),
 		admin.WithDashboardRuntimeConfig(runtimeConfig),
+		admin.WithLiveBroker(liveBroker),
 	)
 
 	var dashHandler *dashboard.Handler
@@ -1069,6 +1108,7 @@ func dashboardRuntimeConfig(cfg *config.Config, usageEnabled bool) admin.Dashboa
 		CacheEnabled:         dashboardEnabledValue(cacheAnalyticsConfigured(cfg, usageEnabled)),
 		RedisURL:             dashboardEnabledValue(simpleResponseCacheConfigured(cfg)),
 		SemanticCacheEnabled: dashboardEnabledValue(semanticResponseCacheConfigured(cfg)),
+		LiveLogsEnabled:      dashboardEnabledValue(cfg != nil && cfg.Admin.LiveLogsEnabled),
 	}
 }
 

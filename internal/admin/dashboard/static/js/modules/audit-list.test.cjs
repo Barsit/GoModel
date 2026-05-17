@@ -168,6 +168,49 @@ test('conversation body rendering darkens the estimated cached prompt text in re
     assert.doesNotMatch(rendered, /Fresh question\.<\/span>/);
 });
 
+test('auditEntrySummaryClass marks only live rows still waiting for a response', () => {
+    const module = createAuditListModule();
+
+    assert.equal(
+        module.auditEntrySummaryClass({
+            _live: true,
+            _live_pending: true,
+            _live_state: 'audit.started'
+        })['audit-entry-summary-live-in-progress'],
+        true
+    );
+
+    assert.equal(
+        module.auditEntrySummaryClass({
+            _live: true,
+            _live_pending: true,
+            _live_state: 'audit.completed',
+            status_code: 200,
+            duration_ns: 123000000
+        })['audit-entry-summary-live-in-progress'],
+        false
+    );
+
+    assert.equal(
+        module.auditEntrySummaryClass({
+            _live: false,
+            _live_pending: false
+        })['audit-entry-summary-live-in-progress'],
+        false
+    );
+});
+
+test('formatDurationNs rejects non-finite values', () => {
+    const module = createAuditListModule();
+
+    assert.equal(module.formatDurationNs('not-a-number'), '-');
+    assert.equal(module.formatDurationNs(Number.NaN), '-');
+    assert.equal(module.formatDurationNs(Number.POSITIVE_INFINITY), '-');
+    assert.equal(module.formatDurationNs(0), 'pending');
+    assert.equal(module.formatDurationNs('1500'), '2 \u00b5s');
+    assert.equal(module.formatDurationNs(1230000000), '1.23 s');
+});
+
 
 test('auditResponsePane surfaces error message from captured error body', () => {
     const module = createAuditListModule();
@@ -297,6 +340,119 @@ test('fetchAuditLog preserves a successful payload when workflow prefetch fails'
     assert.match(String(loggedErrors[0][0]), /Failed to prefetch audit workflows:/);
 });
 
+test('fetchAuditLog preserves live preview rows that are not flushed yet', async () => {
+    const module = createAuditListModule({
+        fetch() {
+            return Promise.resolve({
+                ok: true,
+                json: async () => ({
+                    entries: [{ id: 'audit-db', request_id: 'req-db' }],
+                    total: 1,
+                    limit: 25,
+                    offset: 0
+                })
+            });
+        }
+    });
+    module.auditFetchToken = 0;
+    module.auditLog = {
+        entries: [{
+            id: 'audit-live',
+            request_id: 'req-live',
+            _live: true,
+            _live_pending: true,
+            _audit_flushed: false
+        }],
+        total: 1,
+        limit: 25,
+        offset: 0
+    };
+    module.days = 7;
+    module.auditSearch = '';
+    module.auditMethod = '';
+    module.auditStatusCode = '';
+    module.auditStream = '';
+    module.headers = () => ({ authorization: 'Bearer token' });
+    module.handleFetchResponse = () => true;
+
+    await module.fetchAuditLog(true);
+
+    assert.equal(module.auditLog.entries.length, 2);
+    assert.equal(module.auditLog.entries[0].id, 'audit-live');
+    assert.equal(module.auditLog.entries[1].id, 'audit-db');
+    assert.equal(module.auditLog.total, 2);
+});
+
+test('auditLogAllowsLiveEntries respects custom date ranges', () => {
+    const module = createAuditListModule();
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const tomorrow = new Date(now);
+    tomorrow.setDate(now.getDate() + 1);
+
+    module.auditSearch = '';
+    module.auditMethod = '';
+    module.auditStatusCode = '';
+    module.auditStream = '';
+
+    assert.equal(module.auditLogAllowsLiveEntries({ offset: 0 }), true);
+
+    module.customStartDate = tomorrow;
+    module.customEndDate = null;
+    assert.equal(module.auditLogAllowsLiveEntries({ offset: 0 }), false);
+
+    module.customStartDate = null;
+    module.customEndDate = yesterday;
+    assert.equal(module.auditLogAllowsLiveEntries({ offset: 0 }), false);
+
+    module.customStartDate = yesterday;
+    module.customEndDate = tomorrow;
+    assert.equal(module.auditLogAllowsLiveEntries({ offset: 0 }), true);
+});
+
+test('fetchAuditLog lets persisted rows replace matching live previews', async () => {
+    const module = createAuditListModule({
+        fetch() {
+            return Promise.resolve({
+                ok: true,
+                json: async () => ({
+                    entries: [{ id: 'audit-db', request_id: 'req-live' }],
+                    total: 1,
+                    limit: 25,
+                    offset: 0
+                })
+            });
+        }
+    });
+    module.auditFetchToken = 0;
+    module.auditLog = {
+        entries: [{
+            id: 'audit-live',
+            request_id: 'req-live',
+            _live: true,
+            _live_pending: true,
+            _audit_flushed: false
+        }],
+        total: 1,
+        limit: 25,
+        offset: 0
+    };
+    module.days = 7;
+    module.auditSearch = '';
+    module.auditMethod = '';
+    module.auditStatusCode = '';
+    module.auditStream = '';
+    module.headers = () => ({ authorization: 'Bearer token' });
+    module.handleFetchResponse = () => true;
+
+    await module.fetchAuditLog(true);
+
+    assert.equal(module.auditLog.entries.length, 1);
+    assert.equal(module.auditLog.entries[0].id, 'audit-db');
+    assert.equal(module.auditLog.total, 1);
+});
+
 test('fetchAuditLog sends the consolidated audit search and select filters only', async () => {
     const requests = [];
     const module = createAuditListModule({
@@ -375,7 +531,7 @@ test('pruneAuditExpandedEntries drops expanded state for rows no longer on the p
     assert.equal(JSON.stringify(module.auditExpandedEntries), JSON.stringify({ 'audit-2': true }));
 });
 
-test('auditPaneState formats pane content once for template rendering', () => {
+test('auditPaneState formats initial pane content for template rendering', () => {
     const module = createAuditListModule();
     const entry = { id: 'audit-1' };
     let renderCalls = 0;
@@ -401,6 +557,45 @@ test('auditPaneState formats pane content once for template rendering', () => {
 
     assert.equal(paneState.formattedHeaders, '{\n  "authorization": "Bearer redacted"\n}');
     assert.equal(paneState.renderedBody, 'rendered:body-1');
+    assert.equal(renderCalls, 1);
+});
+
+test('auditPaneState syncs pane content when live detail data arrives', () => {
+    const module = createAuditListModule();
+    const entry = { id: 'audit-1' };
+    let renderCalls = 0;
+    module.renderBodyWithConversationHighlights = (renderEntry, body) => {
+        renderCalls++;
+        assert.equal(renderEntry, entry);
+        return 'rendered:' + body.id;
+    };
+
+    const paneState = module.auditPaneState({
+        title: 'Response',
+        entry,
+        showEmpty: true,
+        emptyMessage: 'Response details were not captured.'
+    });
+
+    assert.equal(paneState.pane.showEmpty, true);
+    assert.equal(paneState.formattedHeaders, '');
+    assert.equal(paneState.renderedBody, '');
+
+    paneState.syncPane({
+        title: 'Response',
+        entry,
+        showHeaders: true,
+        headers: { 'x-request-id': 'req-123' },
+        copyHeaders: { 'x-request-id': 'req-123' },
+        showBody: true,
+        body: { id: 'resp-123' },
+        copyBody: { id: 'resp-123' },
+        showEmpty: false
+    });
+
+    assert.equal(paneState.pane.showEmpty, false);
+    assert.equal(paneState.formattedHeaders, '{\n  "x-request-id": "req-123"\n}');
+    assert.equal(paneState.renderedBody, 'rendered:resp-123');
     assert.equal(renderCalls, 1);
 });
 
