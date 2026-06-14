@@ -1,0 +1,104 @@
+---
+title: "Alibaba Cloud Bailian"
+description: "Configure Alibaba Cloud Bailian (百炼 / DashScope) in GoModel, including the max_tokens compatibility shim for models like Qwen."
+icon: "cloud"
+---
+
+Bailian (百炼) is Alibaba Cloud's model-as-a-service platform for the Qwen
+family of models. GoModel routes to Bailian through its OpenAI-compatible
+endpoint (`/compatible-mode/v1`).
+
+Because Bailian deprecated `max_tokens` in April 2026 in favor of
+`max_completion_tokens`, GoModel automatically maps the standard
+`max_tokens` field to `max_completion_tokens` for every request — no
+client change required.
+
+## Configure
+
+```bash
+BAILIAN_API_KEY=...
+```
+
+Or in `config.yaml`:
+
+```yaml
+providers:
+  bailian:
+    type: bailian
+    api_key: "${BAILIAN_API_KEY}"
+    # base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+```
+
+## Base URLs
+
+Bailian's OpenAI-compatible API is available in multiple regions. Set
+`BAILIAN_BASE_URL` to switch:
+
+| Region | URL |
+| ------ | --- |
+| Beijing (default) | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| Singapore | `https://{workspace-id}.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1` |
+| Frankfurt | `https://{workspace-id}.eu-central-1.maas.aliyuncs.com/compatible-mode/v1` |
+| Hong Kong | `https://{workspace-id}.cn-hongkong.maas.aliyuncs.com/compatible-mode/v1` |
+
+## Model IDs
+
+Common Qwen model identifiers — check the [Bailian model
+list](https://www.alibabacloud.com/help/zh/model-studio/model-list) for the
+current catalog:
+
+| Model | Example ID |
+| ----- | ---------- |
+| Qwen 3.7 Max | `qwen3.7-max` |
+| Qwen 3.7 Plus | `qwen3.7-plus` |
+| Qwen 3.6 Flash | `qwen3.6-flash` |
+| Qwen 3 Max | `qwen3-max` |
+| Qwen 3 Plus | `qwen3-plus` |
+| Qwen 3 Flash | `qwen3-flash` |
+| Qwen 3 Coder Plus | `qwen3-coder-plus` |
+| Text Embedding | `text-embedding-v3` |
+
+## `max_tokens` compatibility
+
+Bailian deprecated `max_tokens` on 2026-04-20 (effective 2026-05-30).
+All Bailian models now require `max_completion_tokens` instead.
+
+GoModel transparently maps the standard `max_tokens` parameter to
+`max_completion_tokens` for every bailian model — send `max_tokens` as you
+normally would, and GoModel rewrites it before forwarding to Bailian.
+
+```bash
+# max_tokens=4096 is automatically sent as max_completion_tokens=4096
+curl http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-max",
+    "messages": [{"role": "user", "content": "Hello"}],
+    "max_tokens": 4096
+  }'
+```
+
+## Supported features
+
+| Feature | Supported |
+| ------- | :-------: |
+| Chat completions | ✅ |
+| Streaming chat | ✅ |
+| Responses (`/v1/responses`) | ✅ (translated to chat) |
+| Embeddings | ✅ (configure model IDs via `BAILIAN_MODELS`) |
+| Files (`/v1/files`) | ✅ |
+| Batches (`/v1/batches`) | ✅ |
+| Passthrough (`/p/bailian/...`) | ✅ |
+
+<Note>
+  Embedding models (`text-embedding-v3`, `text-embedding-v4`) are served by
+  the compatible-mode API but are **not** auto-discovered from the upstream
+  `/v1/models` endpoint. Set `BAILIAN_MODELS=text-embedding-v3,text-embedding-v4`
+  or use `CONFIGURED_PROVIDER_MODELS_MODE=allowlist` to make them available.
+</Note>
+
+## References
+
+- [Bailian documentation](https://www.alibabacloud.com/help/zh/model-studio/)
+- [OpenAI-compatible API reference](https://www.alibabacloud.com/help/zh/model-studio/compatibility-with-openai-responses-api)
+- [Qwen model list](https://www.alibabacloud.com/help/zh/model-studio/model-list)

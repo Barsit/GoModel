@@ -13,7 +13,7 @@ server:
   enable_passthrough_routes: true # expose /p/{provider}/{endpoint} passthrough routes
   allow_passthrough_v1_alias: true # allow /p/{provider}/v1/... while keeping /p/{provider}/... canonical
   user_path_header: "X-GoModel-User-Path" # env: USER_PATH_HEADER; inbound header used for user_path scoping
-  enabled_passthrough_providers: ["openai", "anthropic", "openrouter", "zai", "vllm", "deepseek"] # providers enabled on /p/{provider}/...
+  enabled_passthrough_providers: ["openai", "anthropic", "openrouter", "zai", "vllm", "deepseek", "bailian"] # providers enabled on /p/{provider}/...
 
 models:
   enabled_by_default: true # env: MODELS_ENABLED_BY_DEFAULT; when false, models stay unavailable until an override allows one or more user paths
@@ -198,6 +198,15 @@ providers:
   anthropic:
     type: anthropic
     api_key: "sk-ant-..."
+
+  bailian:
+    type: bailian
+    api_key: "${BAILIAN_API_KEY}"
+    # base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    # Alternative regions (replace {workspace-id} with your workspace):
+    # Singapore: "https://{workspace-id}.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
+    # Frankfurt: "https://{workspace-id}.eu-central-1.maas.aliyuncs.com/compatible-mode/v1"
+    # Hong Kong: "https://{workspace-id}.cn-hongkong.maas.aliyuncs.com/compatible-mode/v1"
 
   gemini:
     type: gemini
