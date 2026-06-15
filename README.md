@@ -89,26 +89,26 @@ curl http://localhost:8080/v1/chat/completions \
 
 Example model identifiers are illustrative and subject to change; consult provider catalogs for current models. Feature columns reflect gateway API support, not every individual model capability exposed by an upstream provider.
 
-| Provider      | Credential                                                        | Example Model                      | Chat | `/responses` | Embed | Files | Batches | Passthru |
-| ------------- | ----------------------------------------------------------------- | ---------------------------------- | :--: | :----------: | :---: | :---: | :-----: | :------: |
-| OpenAI        | `OPENAI_API_KEY`                                                  | `gpt-5.5`                          |  ✅  |      ✅      |  ✅   |  ✅   |   ✅    |    ✅    |
-| Anthropic     | `ANTHROPIC_API_KEY`                                               | `claude-sonnet-4-20250514`         |  ✅  |      ✅      |  ❌   |  ❌   |   ✅    |    ✅    |
-| Google Gemini | `GEMINI_API_KEY`                                                   | `gemini-2.5-flash`                 |  ✅  |      ✅      |  ✅   |  ✅   |   ✅    |    ❌    |
-| Vertex AI     | `VERTEX_PROJECT` + `VERTEX_LOCATION`                               | `google/gemini-2.5-flash`          |  ✅  |      ✅      |  ✅   |  ❌   |   ❌    |    ❌    |
-| DeepSeek      | `DEEPSEEK_API_KEY`                                                | `deepseek-v4-pro`                  |  ✅  |      ✅      |  ❌   |  ❌   |   ❌    |    ✅    |
-| Groq          | `GROQ_API_KEY`                                                    | `llama-3.3-70b-versatile`          |  ✅  |      ✅      |  ✅   |  ✅   |   ✅    |    ❌    |
-| OpenRouter    | `OPENROUTER_API_KEY`                                              | `google/gemini-2.5-flash`          |  ✅  |      ✅      |  ✅   |  ✅   |   ✅    |    ✅    |
-| Z.ai          | `ZAI_API_KEY` (`ZAI_BASE_URL` optional)                           | `glm-5.1`                          |  ✅  |      ✅      |  ✅   |  ❌   |   ❌    |    ✅    |
-| xAI (Grok)    | `XAI_API_KEY`                                                     | `grok-4`                           |  ✅  |      ✅      |  ✅   |  ✅   |   ✅    |    ❌    |
-| Alibaba Cloud Model Studio (Bailian) | `BAILIAN_API_KEY` (`BAILIAN_BASE_URL` optional)       | `qwen3-max`                        |  ✅  |      ✅      |  ✅   |  ✅   |   ✅    |    ✅    |
-| MiniMax       | `MINIMAX_API_KEY` (`MINIMAX_BASE_URL` optional)                   | `MiniMax-M3`                       |  ✅  |      ✅      |  ✅   |  ❌   |   ❌    |    ✅    |
-| Xiaomi MiMo   | `XIAOMI_API_KEY` (`XIAOMI_BASE_URL` optional)                     | `mimo-v2.5-pro`                    |  ✅  |      ✅      |  ❌   |  ❌   |   ❌    |    ✅    |
-| OpenCode Go   | `OPENCODE_GO_API_KEY` (`OPENCODE_GO_BASE_URL` optional)          | `glm-5.1`                          |  ✅  |      ✅      |  ❌   |  ❌   |   ❌    |    ❌    |
-| Azure OpenAI  | `AZURE_API_KEY` + `AZURE_BASE_URL` (`AZURE_API_VERSION` optional) | `gpt-5`                            |  ✅  |      ✅      |  ✅   |  ✅   |   ✅    |    ✅    |
-| Oracle        | `ORACLE_API_KEY` + `ORACLE_BASE_URL`                              | `openai.gpt-oss-120b`              |  ✅  |      ✅      |  ❌   |  ❌   |   ❌    |    ❌    |
-| Ollama        | `OLLAMA_BASE_URL`                                                 | `llama3.2`                         |  ✅  |      ✅      |  ✅   |  ❌   |   ❌    |    ❌    |
-| vLLM          | `VLLM_BASE_URL` (`VLLM_API_KEY` optional)                         | `meta-llama/Llama-3.1-8B-Instruct` |  ✅  |      ✅      |  ✅   |  ❌   |   ❌    |    ✅    |
-| Amazon Bedrock | `BEDROCK_BASE_URL` (region or endpoint) + AWS credentials        | `anthropic.claude-3-5-haiku-20241022-v1:0` |  ✅  |      ✅      |  ❌   |  ❌   |   ❌    |    ❌    |
+| Provider                             | Credential                                                        | Example Model                              | Chat | `/responses` | Embed | Files | Batches | Passthru |
+| ------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------ | :--: | :----------: | :---: | :---: | :-----: | :------: |
+| OpenAI                               | `OPENAI_API_KEY`                                                  | `gpt-5.5`                                  |  ✅  |      ✅      |  ✅   |  ✅   |   ✅    |    ✅    |
+| Anthropic                            | `ANTHROPIC_API_KEY`                                               | `claude-sonnet-4-20250514`                 |  ✅  |      ✅      |  ❌   |  ❌   |   ✅    |    ✅    |
+| Google Gemini                        | `GEMINI_API_KEY`                                                  | `gemini-2.5-flash`                         |  ✅  |      ✅      |  ✅   |  ✅   |   ✅    |    ❌    |
+| Vertex AI                            | `VERTEX_PROJECT` + `VERTEX_LOCATION`                              | `google/gemini-2.5-flash`                  |  ✅  |      ✅      |  ✅   |  ❌   |   ❌    |    ❌    |
+| DeepSeek                             | `DEEPSEEK_API_KEY`                                                | `deepseek-v4-pro`                          |  ✅  |      ✅      |  ❌   |  ❌   |   ❌    |    ✅    |
+| Groq                                 | `GROQ_API_KEY`                                                    | `llama-3.3-70b-versatile`                  |  ✅  |      ✅      |  ✅   |  ✅   |   ✅    |    ❌    |
+| OpenRouter                           | `OPENROUTER_API_KEY`                                              | `google/gemini-2.5-flash`                  |  ✅  |      ✅      |  ✅   |  ✅   |   ✅    |    ✅    |
+| Z.ai                                 | `ZAI_API_KEY` (`ZAI_BASE_URL` optional)                           | `glm-5.1`                                  |  ✅  |      ✅      |  ✅   |  ❌   |   ❌    |    ✅    |
+| xAI (Grok)                           | `XAI_API_KEY`                                                     | `grok-4`                                   |  ✅  |      ✅      |  ✅   |  ✅   |   ✅    |    ❌    |
+| Alibaba Cloud Model Studio (Bailian) | `BAILIAN_API_KEY` (`BAILIAN_BASE_URL` optional)                   | `qwen3-max`                                |  ✅  |      ✅      |  ✅   |  ✅   |   ✅    |    ✅    |
+| MiniMax                              | `MINIMAX_API_KEY` (`MINIMAX_BASE_URL` optional)                   | `MiniMax-M3`                               |  ✅  |      ✅      |  ✅   |  ❌   |   ❌    |    ✅    |
+| Xiaomi MiMo                          | `XIAOMI_API_KEY` (`XIAOMI_BASE_URL` optional)                     | `mimo-v2.5-pro`                            |  ✅  |      ✅      |  ❌   |  ❌   |   ❌    |    ✅    |
+| OpenCode Go                          | `OPENCODE_GO_API_KEY` (`OPENCODE_GO_BASE_URL` optional)           | `glm-5.1`                                  |  ✅  |      ✅      |  ❌   |  ❌   |   ❌    |    ❌    |
+| Azure OpenAI                         | `AZURE_API_KEY` + `AZURE_BASE_URL` (`AZURE_API_VERSION` optional) | `gpt-5`                                    |  ✅  |      ✅      |  ✅   |  ✅   |   ✅    |    ✅    |
+| Oracle                               | `ORACLE_API_KEY` + `ORACLE_BASE_URL`                              | `openai.gpt-oss-120b`                      |  ✅  |      ✅      |  ❌   |  ❌   |   ❌    |    ❌    |
+| Ollama                               | `OLLAMA_BASE_URL`                                                 | `llama3.2`                                 |  ✅  |      ✅      |  ✅   |  ❌   |   ❌    |    ❌    |
+| vLLM                                 | `VLLM_BASE_URL` (`VLLM_API_KEY` optional)                         | `meta-llama/Llama-3.1-8B-Instruct`         |  ✅  |      ✅      |  ✅   |  ❌   |   ❌    |    ✅    |
+| Amazon Bedrock                       | `BEDROCK_BASE_URL` (region or endpoint) + AWS credentials         | `anthropic.claude-3-5-haiku-20241022-v1:0` |  ✅  |      ✅      |  ❌   |  ❌   |   ❌    |    ❌    |
 
 ✅ Supported ❌ Unsupported
 
@@ -204,63 +204,63 @@ docker run --rm -p 8080:8080 --env-file .env gomodel
 
 ### OpenAI-Compatible API
 
-| Endpoint                    | Method | Description                                                                                                  |
-| --------------------------- | ------ | ------------------------------------------------------------------------------------------------------------ |
-| `/v1/chat/completions`      | POST   | Chat completions (streaming supported)                                                                       |
-| `/v1/responses`             | POST   | OpenAI Responses API                                                                                         |
-| `/v1/conversations`         | POST   | Create a conversation (gateway-managed)                                                                      |
-| `/v1/conversations/{id}`    | GET    | Retrieve a conversation                                                                                      |
-| `/v1/conversations/{id}`    | POST   | Replace conversation metadata in full                                                                        |
-| `/v1/conversations/{id}`    | DELETE | Delete a conversation                                                                                        |
-| `/v1/embeddings`            | POST   | Text embeddings                                                                                              |
-| `/v1/models`                | GET    | List available models                                                                                        |
-| `/v1/files`                 | POST   | Upload a file (OpenAI-compatible multipart)                                                                  |
-| `/v1/files`                 | GET    | List files                                                                                                   |
-| `/v1/files/{id}`            | GET    | Retrieve file metadata                                                                                       |
-| `/v1/files/{id}`            | DELETE | Delete a file                                                                                                |
-| `/v1/files/{id}/content`    | GET    | Retrieve raw file content                                                                                    |
-| `/v1/batches`               | POST   | Create a native provider batch (OpenAI-compatible schema; inline `requests` supported where provider-native) |
-| `/v1/batches`               | GET    | List stored batches                                                                                          |
-| `/v1/batches/{id}`          | GET    | Retrieve one stored batch                                                                                    |
-| `/v1/batches/{id}/cancel`   | POST   | Cancel a pending batch                                                                                       |
-| `/v1/batches/{id}/results`  | GET    | Retrieve native batch results when available                                                                 |
+| Endpoint                   | Method | Description                                                                                                  |
+| -------------------------- | ------ | ------------------------------------------------------------------------------------------------------------ |
+| `/v1/chat/completions`     | POST   | Chat completions (streaming supported)                                                                       |
+| `/v1/responses`            | POST   | OpenAI Responses API                                                                                         |
+| `/v1/conversations`        | POST   | Create a conversation (gateway-managed)                                                                      |
+| `/v1/conversations/{id}`   | GET    | Retrieve a conversation                                                                                      |
+| `/v1/conversations/{id}`   | POST   | Replace conversation metadata in full                                                                        |
+| `/v1/conversations/{id}`   | DELETE | Delete a conversation                                                                                        |
+| `/v1/embeddings`           | POST   | Text embeddings                                                                                              |
+| `/v1/models`               | GET    | List available models                                                                                        |
+| `/v1/files`                | POST   | Upload a file (OpenAI-compatible multipart)                                                                  |
+| `/v1/files`                | GET    | List files                                                                                                   |
+| `/v1/files/{id}`           | GET    | Retrieve file metadata                                                                                       |
+| `/v1/files/{id}`           | DELETE | Delete a file                                                                                                |
+| `/v1/files/{id}/content`   | GET    | Retrieve raw file content                                                                                    |
+| `/v1/batches`              | POST   | Create a native provider batch (OpenAI-compatible schema; inline `requests` supported where provider-native) |
+| `/v1/batches`              | GET    | List stored batches                                                                                          |
+| `/v1/batches/{id}`         | GET    | Retrieve one stored batch                                                                                    |
+| `/v1/batches/{id}/cancel`  | POST   | Cancel a pending batch                                                                                       |
+| `/v1/batches/{id}/results` | GET    | Retrieve native batch results when available                                                                 |
 
 ### Anthropic-Compatible API
 
-| Endpoint                    | Method | Description                                                                                                  |
-| --------------------------- | ------ | ------------------------------------------------------------------------------------------------------------ |
-| `/v1/messages`              | POST   | Anthropic Messages API through translated model routing (streaming supported)                                 |
-| `/v1/messages/count_tokens` | POST   | Heuristic Anthropic Messages input token estimate                                                            |
+| Endpoint                    | Method | Description                                                                   |
+| --------------------------- | ------ | ----------------------------------------------------------------------------- |
+| `/v1/messages`              | POST   | Anthropic Messages API through translated model routing (streaming supported) |
+| `/v1/messages/count_tokens` | POST   | Heuristic Anthropic Messages input token estimate                             |
 
 ### Provider Passthrough
 
-| Endpoint            | Method                                       | Description                                        |
-| ------------------- | -------------------------------------------- | -------------------------------------------------- |
+| Endpoint            | Method                                       | Description                                                |
+| ------------------- | -------------------------------------------- | ---------------------------------------------------------- |
 | `/p/{provider}/...` | GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS | Provider-native passthrough with opaque upstream responses |
 
 ### Admin Endpoints
 
-| Endpoint                                   | Method | Description                                |
-| ------------------------------------------ | ------ | ------------------------------------------ |
-| `/admin/dashboard`                         | GET    | Admin dashboard UI                         |
-| `/admin/runtime/config`                    | GET    | Admin runtime configuration                |
-| `/admin/cache/overview`             | GET    | Cache statistics overview                  |
-| `/admin/usage/summary`              | GET    | Aggregate token usage statistics           |
-| `/admin/usage/daily`                | GET    | Per-period token usage breakdown           |
-| `/admin/usage/models`               | GET    | Usage breakdown by model                   |
-| `/admin/usage/user-paths`           | GET    | Usage breakdown by user path               |
-| `/admin/usage/log`                  | GET    | Paginated usage log entries                |
-| `/admin/audit/detail`               | GET    | Detailed audit entry information           |
-| `/admin/audit/log`                  | GET    | Paginated audit log entries                |
-| `/admin/audit/conversation`         | GET    | Conversation thread around one audit entry |
-| `/admin/providers/status`           | GET    | Provider availability status               |
-| `/admin/runtime/refresh`            | POST   | Refresh runtime configuration              |
-| `/admin/models`                     | GET    | List models with provider type             |
-| `/admin/models/categories`          | GET    | List model categories                      |
-| `/admin/model-overrides`            | GET    | List model overrides                       |
-| `/admin/model-overrides`            | PUT    | Create/update model override               |
-| `/admin/model-overrides`            | DELETE | Remove model override                      |
-| `/admin/auth-keys`                  | GET    | List authentication keys                   |
+| Endpoint                    | Method | Description                                |
+| --------------------------- | ------ | ------------------------------------------ |
+| `/admin/dashboard`          | GET    | Admin dashboard UI                         |
+| `/admin/runtime/config`     | GET    | Admin runtime configuration                |
+| `/admin/cache/overview`     | GET    | Cache statistics overview                  |
+| `/admin/usage/summary`      | GET    | Aggregate token usage statistics           |
+| `/admin/usage/daily`        | GET    | Per-period token usage breakdown           |
+| `/admin/usage/models`       | GET    | Usage breakdown by model                   |
+| `/admin/usage/user-paths`   | GET    | Usage breakdown by user path               |
+| `/admin/usage/log`          | GET    | Paginated usage log entries                |
+| `/admin/audit/detail`       | GET    | Detailed audit entry information           |
+| `/admin/audit/log`          | GET    | Paginated audit log entries                |
+| `/admin/audit/conversation` | GET    | Conversation thread around one audit entry |
+| `/admin/providers/status`   | GET    | Provider availability status               |
+| `/admin/runtime/refresh`    | POST   | Refresh runtime configuration              |
+| `/admin/models`             | GET    | List models with provider type             |
+| `/admin/models/categories`  | GET    | List model categories                      |
+| `/admin/model-overrides`    | GET    | List model overrides                       |
+| `/admin/model-overrides`    | PUT    | Create/update model override               |
+| `/admin/model-overrides`    | DELETE | Remove model override                      |
+| `/admin/auth-keys`          | GET    | List authentication keys                   |
 
 > **Legacy alias:** Until **2026-08-09**, all admin endpoints are also
 > reachable under `/admin/api/v1/*`. Legacy responses include
@@ -270,11 +270,11 @@ docker run --rm -p 8080:8080 --env-file .env gomodel
 
 ### Operations Endpoints
 
-| Endpoint              | Method | Description                       |
-| --------------------- | ------ | --------------------------------- |
-| `/health`             | GET    | Health check                      |
+| Endpoint              | Method | Description                                     |
+| --------------------- | ------ | ----------------------------------------------- |
+| `/health`             | GET    | Health check                                    |
 | `/metrics`            | GET    | Prometheus metrics (experimental, when enabled) |
-| `/swagger/index.html` | GET    | Swagger UI (when enabled)         |
+| `/swagger/index.html` | GET    | Swagger UI (when enabled)                       |
 
 ---
 
@@ -284,26 +284,26 @@ GoModel is configured through environment variables and an optional `config.yaml
 
 Key settings:
 
-| Variable                        | Default                                | Description                                                                      |
-| ------------------------------- | -------------------------------------- | -------------------------------------------------------------------------------- |
-| `PORT`                          | `8080`                                 | Server port                                                                      |
-| `BASE_PATH`                     | `/`                                    | Mount the gateway under a path prefix such as `/g`                               |
-| `GOMODEL_MASTER_KEY`            | (none)                                 | API key for authentication                                                       |
-| `USER_PATH_HEADER`              | `X-GoModel-User-Path`                  | Header used to read/write request `user_path` values                             |
-| `ENABLE_PASSTHROUGH_ROUTES`     | `true`                                 | Enable provider-native passthrough routes under `/p/{provider}/...`              |
-| `ALLOW_PASSTHROUGH_V1_ALIAS`    | `true`                                 | Allow `/p/{provider}/v1/...` aliases while keeping `/p/{provider}/...` canonical |
-| `ENABLED_PASSTHROUGH_PROVIDERS` | `openai,anthropic,openrouter,zai,vllm,deepseek` | Comma-separated list of enabled passthrough providers                            |
-| `GEMINI_API_MODE`               | `native`                               | Gemini AI Studio upstream mode: `native` or `openai_compatible`                 |
-| `VERTEX_API_MODE`               | `native`                               | Vertex AI Gemini upstream mode: `native` or `openai_compatible`                 |
-| `USE_GOOGLE_GEMINI_NATIVE_API`  | `true`                                 | Legacy global Gemini mode toggle used when per-provider `*_API_MODE` is unset   |
-| `STORAGE_TYPE`                  | `sqlite`                               | Storage backend (`sqlite`, `postgresql`, `mongodb`)                              |
-| `METRICS_ENABLED`               | `false`                                | Enable Prometheus metrics (experimental)                                         |
-| `LOGGING_ENABLED`               | `false`                                | Enable audit logging                                                             |
-| `DASHBOARD_LIVE_LOGS_ENABLED`   | `true`                                 | Stream realtime dashboard log previews with bounded replay                       |
-| `DASHBOARD_LIVE_LOGS_BUFFER_SIZE` | `10000`                              | Max in-memory live events retained; increase above ~1000 msgs/sec or bursty traffic |
-| `DASHBOARD_LIVE_LOGS_REPLAY_LIMIT` | `1000`                               | Max events replayed after reconnect; increase for longer reconnect windows       |
-| `DASHBOARD_LIVE_LOGS_HEARTBEAT_SECONDS` | `15`                           | SSE heartbeat interval; lower when proxies need faster liveness checks           |
-| `GUARDRAILS_ENABLED`            | `false`                                | Enable the configured guardrails pipeline                                        |
+| Variable                                | Default                                         | Description                                                                         |
+| --------------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `PORT`                                  | `8080`                                          | Server port                                                                         |
+| `BASE_PATH`                             | `/`                                             | Mount the gateway under a path prefix such as `/g`                                  |
+| `GOMODEL_MASTER_KEY`                    | (none)                                          | API key for authentication                                                          |
+| `USER_PATH_HEADER`                      | `X-GoModel-User-Path`                           | Header used to read/write request `user_path` values                                |
+| `ENABLE_PASSTHROUGH_ROUTES`             | `true`                                          | Enable provider-native passthrough routes under `/p/{provider}/...`                 |
+| `ALLOW_PASSTHROUGH_V1_ALIAS`            | `true`                                          | Allow `/p/{provider}/v1/...` aliases while keeping `/p/{provider}/...` canonical    |
+| `ENABLED_PASSTHROUGH_PROVIDERS`         | `openai,anthropic,openrouter,zai,vllm,deepseek` | Comma-separated list of enabled passthrough providers                               |
+| `GEMINI_API_MODE`                       | `native`                                        | Gemini AI Studio upstream mode: `native` or `openai_compatible`                     |
+| `VERTEX_API_MODE`                       | `native`                                        | Vertex AI Gemini upstream mode: `native` or `openai_compatible`                     |
+| `USE_GOOGLE_GEMINI_NATIVE_API`          | `true`                                          | Legacy global Gemini mode toggle used when per-provider `*_API_MODE` is unset       |
+| `STORAGE_TYPE`                          | `sqlite`                                        | Storage backend (`sqlite`, `postgresql`, `mongodb`)                                 |
+| `METRICS_ENABLED`                       | `false`                                         | Enable Prometheus metrics (experimental)                                            |
+| `LOGGING_ENABLED`                       | `false`                                         | Enable audit logging                                                                |
+| `DASHBOARD_LIVE_LOGS_ENABLED`           | `true`                                          | Stream realtime dashboard log previews with bounded replay                          |
+| `DASHBOARD_LIVE_LOGS_BUFFER_SIZE`       | `10000`                                         | Max in-memory live events retained; increase above ~1000 msgs/sec or bursty traffic |
+| `DASHBOARD_LIVE_LOGS_REPLAY_LIMIT`      | `1000`                                          | Max events replayed after reconnect; increase for longer reconnect windows          |
+| `DASHBOARD_LIVE_LOGS_HEARTBEAT_SECONDS` | `15`                                            | SSE heartbeat interval; lower when proxies need faster liveness checks              |
+| `GUARDRAILS_ENABLED`                    | `false`                                         | Enable the configured guardrails pipeline                                           |
 
 **Quick Start - Authentication:** By default `GOMODEL_MASTER_KEY` is unset. Without this key, API endpoints are unprotected and anyone can call them. This is insecure for production. **Strongly recommend** setting a strong secret before exposing the service. Add `GOMODEL_MASTER_KEY` to your `.env` or environment for production deployments.
 
@@ -337,25 +337,27 @@ See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for testing, linting, and pre-commit s
 
 ---
 
-# Roadmap to 0.2.0
+# Roadmap
 
-### Must Have
+## Commercial features
 
 - [ ] Intelligent routing
-- [ ] Broader provider support: Cohere, Command A, and Operational
+- [ ] Context window compression
+- [ ] Cluster mode
+
+## Roadmap to 0.2.0
+
+- [ ] UI visibility for prompt caching and local cache usage
+- [ ] Broader provider support, including Cohere, Command A, and Operational
+- [ ] Full support for the OpenAI `/conversations` lifecycle
+- [ ] Guardrails hardening: better UI, simpler architecture, easier custom guardrails, and response-side guardrails before output reaches the client
+- [ ] Provider-native passthrough for all providers, beyond the current beta coverage
 - [x] Budget management with limits per `user_path` and/or API key
 - [x] Editable model pricing for accurate cost tracking and budgeting
 - [x] Full support for the OpenAI `/responses` lifecycle
 - [x] Anthropic-compatible `/messages` ingress and `/messages/count_tokens`
-- [ ] Full support for the OpenAI `/conversations` lifecycle
 - [x] Prompt cache visibility showing how much of each prompt was cached by the provider
-- [ ] Guardrails hardening: better UI, simpler architecture, easier custom guardrails, and response-side guardrails before output reaches the client
-- [ ] Passthrough for all providers, beyond the current OpenAI and Anthropic beta
 - [x] Fix failover charts in the dashboard
-
-### Should Have
-
-- [ ] Cluster mode
 
 ## Community
 
