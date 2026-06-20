@@ -91,6 +91,7 @@ func Init(ctx context.Context, result *config.LoadResult, factory *ProviderFacto
 	registry.SetCache(modelCache)
 	registry.SetConfiguredProviderModelsMode(result.Config.Models.ConfiguredProviderModelsMode)
 
+
 	count, err := initializeProviders(ctx, providerMap, factory, registry)
 	if err != nil {
 		modelCache.Close()
@@ -147,7 +148,9 @@ func Init(ctx context.Context, result *config.LoadResult, factory *ProviderFacto
 	}
 	stopRefresh := registry.StartBackgroundRefresh(refreshInterval, modelListURL)
 
-	router, err := NewRouter(registry)
+	strategyRegistry := buildStrategyRegistry(result.Config.Router)
+
+	router, err := NewRouter(registry, WithStrategyRegistry(strategyRegistry))
 	if err != nil {
 		stopRefresh()
 		modelCache.Close()

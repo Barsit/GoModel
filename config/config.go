@@ -27,6 +27,7 @@ type Config struct {
 	Fallback   FallbackConfig   `yaml:"fallback"`
 	Workflows  WorkflowsConfig  `yaml:"workflows"`
 	Resilience ResilienceConfig `yaml:"resilience"`
+	Router     RouterConfig     `yaml:"router"`
 }
 
 // LoadResult is returned by Load and bundles the application config with the raw
@@ -119,6 +120,7 @@ func buildDefaultConfig() *Config {
 			Retry:          DefaultRetryConfig(),
 			CircuitBreaker: DefaultCircuitBreakerConfig(),
 		},
+		Router: DefaultRouterConfig(),
 		Admin: AdminConfig{
 			EndpointsEnabled:         true,
 			UIEnabled:                true,
@@ -190,6 +192,10 @@ func Load() (*LoadResult, error) {
 	}
 
 	if err := ValidateCacheConfig(&cfg.Cache); err != nil {
+		return nil, err
+	}
+
+	if err := ValidateRouterConfig(&cfg.Router); err != nil {
 		return nil, err
 	}
 

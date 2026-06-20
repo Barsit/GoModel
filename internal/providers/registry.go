@@ -66,6 +66,10 @@ type ModelRegistry struct {
 	// invalidateSortedCaches whenever the catalog changes. Protected by mu.
 	qualifiedByName map[string]core.ModelSelector
 	qualifiedByType map[string]core.ModelSelector
+
+	// providerRegistrationOrder maintains provider-name insertion order so
+	// ListProvidersForModel returns entries in registration (first-wins) order.
+	providerRegistrationOrder []string
 }
 
 type metadataEnrichmentStats struct {
@@ -92,6 +96,7 @@ func NewModelRegistry() *ModelRegistry {
 		providerRuntime:              make(map[string]providerRuntimeState),
 		refreshCh:                    make(chan struct{}, 1),
 		configuredProviderModelsMode: config.ConfiguredProviderModelsModeFallback,
+		providerRegistrationOrder:    make([]string, 0),
 	}
 }
 
@@ -278,6 +283,11 @@ func (r *ModelRegistry) RegisterProviderWithNameAndType(provider core.Provider, 
 	r.providers = append(r.providers, provider)
 	r.providerTypes[provider] = providerType
 	r.providerNames[provider] = providerName
+
+	// Track registration order for first-wins routing and ListProvidersForModel.
+	if !slices.Contains(r.providerRegistrationOrder, providerName) {
+		r.providerRegistrationOrder = append(r.providerRegistrationOrder, providerName)
+	}
 
 	state := r.providerRuntime[providerName]
 	state.registered = true
@@ -699,6 +709,39 @@ type ModelWithProvider struct {
 	ProviderType string     `json:"provider_type"`
 	ProviderName string     `json:"provider_name"`
 	Selector     string     `json:"selector"`
+}
+
+// ListProvidersForModel returns every provider that serves modelID, in
+// registration (first-wins) order. Each entry includes the model metadata and
+// provider info so callers can inspect pricing, latency, and other signals.
+// Returns an empty slice when the model is not found.
+func (r *ModelRegistry) ListProvidersForModel(modelID string) []ModelWithProvider {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	modelID = strings.TrimSpace(modelID)
+	if modelID == "" || len(r.providerRegistrationOrder) == 0 {
+		return []ModelWithProvider{}
+	}
+
+	result := make([]ModelWithProvider, 0, len(r.providers))
+	for _, pName := range r.providerRegistrationOrder {
+		pModels, ok := r.modelsByProvider[pName]
+		if !ok {
+			continue
+		}
+		info, exists := providerModelInfo(pModels, modelID, modelID)
+		if !exists {
+			continue
+		}
+		result = append(result, ModelWithProvider{
+			Model:        info.Model,
+			ProviderType: info.ProviderType,
+			ProviderName: pName,
+			Selector:     qualifyPublicModelID(pName, modelID),
+		})
+	}
+	return result
 }
 
 // ListModelsWithProvider returns all provider-backed models with provider metadata,

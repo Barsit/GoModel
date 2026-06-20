@@ -315,6 +315,46 @@ gomodel --health
 gomodel --version
 ```
 
+## Intelligent Routing
+
+When multiple providers serve the same model, GoModel can route to the
+best provider automatically. By default the `balanced` strategy scores
+candidates by a weighted combination of cost (60 %) and latency (40 %).
+
+```bash
+# Default balanced routing — GoModel picks the best provider
+curl http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+To switch strategies per‑request, send the `X-GoModel-Routing-Strategy` header:
+
+```bash
+curl http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-GoModel-Routing-Strategy: first_fit" \
+  -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+To pin a specific provider and bypass routing, use the `provider` field:
+
+```bash
+curl http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "gpt-4o", "provider": "openai-east",
+       "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+Or use the `provider/model` syntax in the model field:
+
+```bash
+curl http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "openai-east/gpt-4o",
+       "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
 ## Client Library Examples
 
 GoModel exposes an OpenAI-compatible API, so the official OpenAI SDKs work

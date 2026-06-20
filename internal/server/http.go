@@ -287,6 +287,10 @@ func New(provider core.RoutableProvider, cfg *Config) *Server {
 		e.Use(AuthMiddlewareWithAuthenticator(cfg.MasterKey, cfg.Authenticator, authSkipPaths, userPathHeaderName))
 	}
 
+	// Per-request intelligent-routing override (X-GoModel-Routing-Strategy).
+	// A no-op header-lookup when the header is absent.
+	e.Use(RoutingStrategyCapture())
+
 	// Workflow resolution resolves the request-scoped workflow after auth so
 	// managed auth key user-path overrides are visible to policy resolution while
 	// still keeping workflow resolution failures loggable through the audit middleware.

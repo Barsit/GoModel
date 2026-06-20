@@ -4,6 +4,7 @@ package core
 import (
 	"context"
 	"io"
+	"time"
 )
 
 // Provider defines the interface for LLM providers
@@ -182,6 +183,30 @@ type AvailabilityChecker interface {
 	// Returns nil if available, error otherwise. Initialization logs failures but
 	// keeps the provider registered so later refreshes can retry discovery.
 	CheckAvailability(ctx context.Context) error
+}
+
+// ProviderStats is an optional interface implemented by provider clients that
+// expose in-memory runtime statistics for latency-aware routing. Routers obtain
+// it via a type assertion; providers without instrumentation simply omit it.
+//
+// Latency values are best-effort EWMA approximations (not true percentiles) and
+// are intended only for relative comparison across providers. All accessors
+// return the zero value (0 / "") before any request has been observed, which
+// strategies interpret as "unknown".
+type ProviderStats interface {
+	// P50Latency returns the approximate P50 round-trip latency, or 0 if unknown.
+	P50Latency() time.Duration
+
+	// P99Latency returns the approximate P99 round-trip latency, or 0 if unknown.
+	P99Latency() time.Duration
+
+	// ErrorRate returns the smoothed error ratio in [0, 1], or 0 if unknown.
+	ErrorRate() float64
+
+	// CircuitState returns the provider's circuit breaker state as a string:
+	// "closed", "open", or "half-open". Implementations without a circuit
+	// breaker return "closed".
+	CircuitState() string
 }
 
 // ModelLookup defines the interface for looking up models and their providers.

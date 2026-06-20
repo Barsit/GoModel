@@ -1,0 +1,72 @@
+---
+title: "Intelligent Routing"
+description: "When multiple providers serve the same model, GoModel can intelligently select the best provider based on cost and latency."
+icon: "routing"
+keywords: ["routing", "provider selection", "cost-aware", "latency-aware", "load balancing"]
+---
+
+## Overview
+
+When multiple providers are configured for the same model ID and a request does
+not pin a specific provider, GoModel can intelligently select the best provider
+based on cost and/or latency.
+
+### How it works
+
+1. A request arrives without an explicit provider (e.g. `model: "gpt-4o"`,
+   no `provider` field)
+2. GoModel collects all providers that serve this model
+3. If there are 2+ candidates, the configured **strategy** scores and ranks them
+4. The best-scoring provider handles the request
+
+Single-provider setups are unaffected — one candidate means no decision is needed.
+
+## Strategies
+
+| Strategy | Description |
+|----------|-------------|
+| `balanced` (default) | Weighted combination of cost and latency. Default weights: 60 % cost, 40 % latency. |
+| `first_fit` | Returns the first acceptable provider in registration order. No scoring — useful for deterministic, configuration-order routing. |
+
+Configure via environment variable `MODEL_ROUTING_STRATEGY=first_fit` or YAML:
+
+```yaml
+router:
+  strategy: balanced
+  weights:
+    cost: 0.6
+    latency: 0.4
+  max_error_rate: 0.5
+```
+
+## Per-request override
+
+Set the `X-GoModel-Routing-Strategy` header to switch strategies for a single request:
+
+```bash
+curl http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-GoModel-Routing-Strategy: first_fit" \
+  -d '{"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+Invalid override values fall back to the global strategy (logged as WARN).
+
+## Explicit provider bypass
+
+Requests that specify a provider explicitly — either via `provider` field or
+`provider/model` syntax — always bypass intelligent routing:
+
+```bash
+curl http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "gpt-4o", "provider": "openai-east"}'
+```
+
+or using model‑qualified syntax:
+
+```bash
+curl http://localhost:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "openai-east/gpt-4o"}'
+```

@@ -71,15 +71,22 @@ type Config struct {
 	CircuitBreaker config.CircuitBreakerConfig
 	// Hooks provides optional observability callbacks invoked on request start and end.
 	Hooks Hooks
+	// LatencyTrackingEnabled controls whether this client allocates an EWMA
+	// latency/error-rate tracker for intelligent routing. Default true for
+	// multi-provider setups; single-provider configs disable it to save memory.
+	LatencyTrackingEnabled bool
 }
 
-// DefaultConfig returns default client configuration
+// DefaultConfig returns default client configuration with latency tracking
+// enabled. Single-provider setups should override LatencyTrackingEnabled to
+// false to avoid allocating EWMA trackers that will never be used.
 func DefaultConfig(providerName, baseURL string) Config {
 	return Config{
-		ProviderName:   providerName,
-		BaseURL:        baseURL,
-		Retry:          config.DefaultRetryConfig(),
-		CircuitBreaker: config.DefaultCircuitBreakerConfig(),
+		ProviderName:           providerName,
+		BaseURL:                baseURL,
+		Retry:                  config.DefaultRetryConfig(),
+		CircuitBreaker:         config.DefaultCircuitBreakerConfig(),
+		LatencyTrackingEnabled: true,
 	}
 }
 
@@ -93,34 +100,20 @@ type Client struct {
 	config         Config
 	headerSetter   HeaderSetter
 	circuitBreaker *circuitBreaker
+	latencyTracker *LatencyTracker
 }
 
-// New creates a new LLM client with the given configuration
-func New(cfg Config, headerSetter HeaderSetter) *Client {
-	c := &Client{
-		httpClient:   httpclient.NewDefaultHTTPClient(),
-		config:       cfg,
-		headerSetter: headerSetter,
-	}
-
-	if cfg.CircuitBreaker.FailureThreshold > 0 {
-		c.circuitBreaker = newCircuitBreaker(
-			cfg.CircuitBreaker.FailureThreshold,
-			cfg.CircuitBreaker.SuccessThreshold,
-			cfg.CircuitBreaker.Timeout,
-		)
-	}
-
-	return c
-}
-
-// NewWithHTTPClient creates a new LLM client with a custom HTTP client
-func NewWithHTTPClient(httpClient *http.Client, cfg Config, headerSetter HeaderSetter) *Client {
+// newLLMClient is the shared constructor core used by New and NewWithHTTPClient.
+// A LatencyTracker is allocated only when cfg.LatencyTrackingEnabled is true.
+func newLLMClient(httpClient *http.Client, cfg Config, headerSetter HeaderSetter) *Client {
 	c := &Client{
 		httpClient:   httpClient,
 		config:       cfg,
 		headerSetter: headerSetter,
 	}
+	if cfg.LatencyTrackingEnabled {
+		c.latencyTracker = NewLatencyTracker()
+	}
 
 	if cfg.CircuitBreaker.FailureThreshold > 0 {
 		c.circuitBreaker = newCircuitBreaker(
@@ -131,6 +124,16 @@ func NewWithHTTPClient(httpClient *http.Client, cfg Config, headerSetter HeaderS
 	}
 
 	return c
+}
+
+// New creates a new LLM client with the given configuration
+func New(cfg Config, headerSetter HeaderSetter) *Client {
+	return newLLMClient(httpclient.NewDefaultHTTPClient(), cfg, headerSetter)
+}
+
+// NewWithHTTPClient creates a new LLM client with a custom HTTP client
+func NewWithHTTPClient(httpClient *http.Client, cfg Config, headerSetter HeaderSetter) *Client {
+	return newLLMClient(httpClient, cfg, headerSetter)
 }
 
 // SetBaseURL updates the base URL (thread-safe)
@@ -235,7 +238,47 @@ func (c *Client) finishRequest(scope requestScope, statusCode int, err error) {
 // Use this whenever a code path returns from one of the public Do* methods.
 func (c *Client) completeScope(scope requestScope, statusCode int, err, cbErr error) {
 	c.recordCircuitBreakerCompletion(statusCode, cbErr)
+	if c.latencyTracker != nil {
+		c.latencyTracker.Record(time.Since(scope.startedAt), err != nil)
+	}
 	c.finishRequest(scope, statusCode, err)
+}
+
+// P50Latency returns the approximate P50 round-trip latency for this client's
+// provider, satisfying core.ProviderStats. Returns 0 before any request or
+// when latency tracking is disabled.
+func (c *Client) P50Latency() time.Duration {
+	if c.latencyTracker == nil {
+		return 0
+	}
+	return c.latencyTracker.P50()
+}
+
+// P99Latency returns the approximate P99 round-trip latency for this client's
+// provider, satisfying core.ProviderStats. Returns 0 before any request.
+func (c *Client) P99Latency() time.Duration {
+	if c.latencyTracker == nil {
+		return 0
+	}
+	return c.latencyTracker.P99()
+}
+
+// ErrorRate returns the smoothed error ratio in [0, 1], satisfying
+// core.ProviderStats. Returns 0 before any request.
+func (c *Client) ErrorRate() float64 {
+	if c.latencyTracker == nil {
+		return 0
+	}
+	return c.latencyTracker.ErrorRate()
+}
+
+// CircuitState returns the current circuit-breaker state, satisfying
+// core.ProviderStats. Returns "closed" when no breaker is configured.
+func (c *Client) CircuitState() string {
+	if c.circuitBreaker == nil {
+		return "closed"
+	}
+	return c.circuitBreaker.State()
 }
 
 // failAfterRetries handles the "exhausted retries with no captured error"

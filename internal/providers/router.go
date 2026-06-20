@@ -12,16 +12,52 @@ import (
 	"strings"
 
 	"gomodel/internal/core"
+	router "gomodel/internal/router"
 )
 
 // ErrRegistryNotInitialized is returned when the router is used before the registry has any models.
 var ErrRegistryNotInitialized = fmt.Errorf("model registry has no models: ensure Initialize() or LoadFromCache() is called before using the router")
 
+// RouterOption configures a Router at construction.
+type RouterOption func(*Router)
+
+// WithStrategyRegistry enables intelligent provider selection: when a request
+// does not pin a provider and multiple providers serve the same model, the
+// registry's configured strategy (or a per-request override on the context)
+// selects the best candidate by cost and/or latency. A nil registry keeps the
+// historical first-wins behaviour.
+func WithStrategyRegistry(registry *router.StrategyRegistry) RouterOption {
+	return func(r *Router) { r.strategyRegistry = registry }
+}
+
+// WithModelAccessValidator sets a callback that validates the final resolved
+// selector (including any strategy-chosen provider) against the request
+// context. When the callback returns an error the strategy's choice is
+// rejected and the original provider is used instead.
+func WithModelAccessValidator(v ModelAccessValidator) RouterOption {
+	return func(r *Router) { r.modelAccessValidator = v }
+}
+
+// WithLatencyTracking controls whether newly created provider clients
+// allocate an EWMA latency/error-rate tracker. Disabled for single-provider
+// setups that never participate in intelligent routing.
+func WithLatencyTracking(enabled bool) RouterOption {
+	return func(r *Router) { r.latencyTrackingEnabled = enabled }
+}
+
+// ModelAccessValidator checks whether a resolved selector is accessible
+// for the current request context (user path, API key scope, etc.).
+// Used by the router to validate strategy-chosen providers before executing.
+type ModelAccessValidator func(ctx context.Context, selector core.ModelSelector) error
+
 // Router routes requests to the appropriate provider based on the model lookup.
 // It uses a dynamic model-to-provider mapping that is populated at startup
 // by fetching available models from each provider's /models endpoint.
 type Router struct {
-	lookup core.ModelLookup
+	lookup                core.ModelLookup
+	strategyRegistry      *router.StrategyRegistry
+	modelAccessValidator  ModelAccessValidator
+	latencyTrackingEnabled bool
 }
 
 type providerTypeRegistry interface {
@@ -52,6 +88,13 @@ type modelWithProviderLister interface {
 	ListModelsWithProvider() []ModelWithProvider
 }
 
+// providerModelForModelLister is an optional O(k) interface for enumerating
+// providers that serve a specific model ID. Implementations with a registration
+// order can return candidates in first-wins order.
+type providerModelForModelLister interface {
+	ListProvidersForModel(modelID string) []ModelWithProvider
+}
+
 // qualifiedSelectorResolver is an optional fast path for qualified selector
 // resolution. Implementations resolve a "<segment>/<modelID>" pair via an O(1)
 // index instead of scanning the catalog. A false result means the caller should
@@ -70,14 +113,18 @@ func registryUnavailableError(err error) error {
 
 // NewRouter creates a new provider router with a model lookup.
 // The lookup must be initialized (via Initialize() or LoadFromCache()) before using the router.
-// Returns an error if the lookup is nil.
-func NewRouter(lookup core.ModelLookup) (*Router, error) {
+// Returns an error if the lookup is nil. Options may enable intelligent routing.
+func NewRouter(lookup core.ModelLookup, opts ...RouterOption) (*Router, error) {
 	if lookup == nil {
 		return nil, fmt.Errorf("lookup cannot be nil")
 	}
-	return &Router{
-		lookup: lookup,
-	}, nil
+	r := &Router{lookup: lookup}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(r)
+		}
+	}
+	return r, nil
 }
 
 // checkReady verifies the lookup has models available.
@@ -281,7 +328,132 @@ func (r *Router) resolveProvider(ctx context.Context, model, providerHint string
 	if p == nil {
 		return nil, core.ModelSelector{}, core.NewNotFoundError("model not found: " + lookupModel)
 	}
+
+	// Intelligent routing: when the caller did not pin a provider (or the provider
+	// was assigned by the system during the prepare phase for an unqualified request)
+	// and more than one provider serves this model, let the configured strategy
+	// choose the best candidate. This is a no-op when no strategy registry is
+	// configured (historical behaviour).
+	eligible := (strings.TrimSpace(providerHint) == "" || router.IsRoutingEligible(ctx)) && !strings.Contains(model, "/")
+	if eligible && r.strategyRegistry != nil {
+		if chosen, newSelector, ok := r.applyStrategy(ctx, selector); ok {
+			// Re-validate the strategy-chosen selector against the model
+			// authorizer. The prepare-phase authorisation checked the first-
+			// resolved provider; the strategy may have selected a different
+			// provider that the caller is not entitled to use.
+			if r.modelAccessValidator != nil {
+				if err := r.modelAccessValidator(ctx, newSelector); err != nil {
+					slog.WarnContext(ctx, "routing strategy selected inaccessible provider, falling back",
+						"model", selector.Model, "chosen_provider", newSelector.Provider,
+						"original_provider", selector.Provider, "error", err)
+					return p, selector, nil
+				}
+			}
+			selector = newSelector
+			p = chosen
+		}
+	}
+
 	return p, selector, nil
+}
+
+// applyStrategy runs the configured routing strategy over all providers that
+// serve the resolved model and returns the chosen provider and selector. It
+// returns ok=false when intelligent routing does not apply (single candidate,
+// no strategy, all filtered, or the chosen candidate equals the current one).
+func (r *Router) applyStrategy(ctx context.Context, selector core.ModelSelector) (core.Provider, core.ModelSelector, bool) {
+	candidates := r.collectCandidates(selector.Model)
+	if len(candidates) < 2 {
+		return nil, selector, false
+	}
+
+	strategy, valid := r.strategyRegistry.Resolve(ctx)
+	if !valid {
+		slog.WarnContext(ctx, "routing strategy override rejected, falling back to default strategy",
+			"model", selector.Model, "default", r.strategyRegistry.DefaultID())
+		strategy = r.strategyRegistry.New(r.strategyRegistry.DefaultID())
+		if strategy == nil {
+			return nil, selector, false
+		}
+	}
+
+	chosen, err := strategy.Select(ctx, candidates)
+	if err != nil {
+		slog.WarnContext(ctx, "routing strategy selected no candidate, falling back to first candidate",
+			"model", selector.Model, "strategy", strategy.Name(), "error", err)
+		return nil, selector, false
+	}
+
+	newSelector := core.ModelSelector{Provider: chosen.ProviderName, Model: chosen.ModelID}
+	if newSelector.QualifiedModel() == selector.QualifiedModel() {
+		return nil, selector, false
+	}
+	chosenProvider := r.lookup.GetProvider(newSelector.QualifiedModel())
+	if chosenProvider == nil {
+		return nil, selector, false
+	}
+	slog.DebugContext(ctx, "intelligent routing selected provider",
+		"model", selector.Model, "provider", chosen.ProviderName, "strategy", strategy.Name())
+	return chosenProvider, newSelector, true
+}
+
+// collectCandidates enumerates every provider that serves modelID, in
+// registration (first-wins) order, attaching pricing and runtime statistics
+// where the provider exposes them. Uses the O(k) ListProvidersForModel path
+// when available, falling back to an O(N) scan over the full catalog.
+func (r *Router) collectCandidates(modelID string) []router.ProviderCandidate {
+	modelID = strings.TrimSpace(modelID)
+	if modelID == "" {
+		return nil
+	}
+
+	// Fast path: O(k) per-model lookup.
+	if indexed, ok := r.lookup.(providerModelForModelLister); ok {
+		return r.buildCandidatesFromEntries(indexed.ListProvidersForModel(modelID))
+	}
+
+	// Fallback: O(N) scan over the full catalog.
+	models, ok := r.lookup.(modelWithProviderLister)
+	if !ok {
+		return nil
+	}
+	var entries []ModelWithProvider
+	for _, entry := range models.ListModelsWithProvider() {
+		if strings.TrimSpace(entry.Model.ID) == modelID {
+			entries = append(entries, entry)
+		}
+	}
+	return r.buildCandidatesFromEntries(entries)
+}
+
+// buildCandidatesFromEntries converts ModelWithProvider entries into
+// ProviderCandidate values, attaching runtime stats via type assertion.
+func (r *Router) buildCandidatesFromEntries(entries []ModelWithProvider) []router.ProviderCandidate {
+	candidates := make([]router.ProviderCandidate, 0, len(entries))
+	for _, entry := range entries {
+		providerName := strings.TrimSpace(entry.ProviderName)
+		qualified := core.ModelSelector{Provider: providerName, Model: entry.Model.ID}.QualifiedModel()
+		provider := r.lookup.GetProvider(qualified)
+		if provider == nil {
+			continue
+		}
+		candidate := router.ProviderCandidate{
+			Provider:     provider,
+			ProviderName: providerName,
+			ProviderType: entry.ProviderType,
+			ModelID:      entry.Model.ID,
+		}
+		if entry.Model.Metadata != nil {
+			candidate.Pricing = entry.Model.Metadata.Pricing
+		}
+		if stats, ok := provider.(core.ProviderStats); ok {
+			candidate.Latency = stats.P50Latency()
+			candidate.ErrorRate = stats.ErrorRate()
+			candidate.CircuitState = stats.CircuitState()
+		}
+		candidates = append(candidates, candidate)
+	}
+	return candidates
 }
 
 func (r *Router) refreshProviderModelsForRequest(ctx context.Context, requested core.RequestedModelSelector) (bool, error) {

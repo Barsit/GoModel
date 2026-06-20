@@ -355,3 +355,15 @@ providers:
   #           input_per_mtok: 0
   #           output_per_mtok: 0
   #     - Gemma4-31B
+
+# --- Intelligent routing ---
+# When a request does not pin a provider and multiple providers serve the same
+# model, the gateway scores candidates and routes to the best one. Single-provider
+# configs are unaffected (one candidate means no decision needed).
+# Default: strategy=balanced, weights={cost:0.6 latency:0.4}, max_error_rate=0.5
+# router:
+#   strategy: balanced          # balanced, first_fit
+#   weights:
+#     cost: 0.6
+#     latency: 0.4
+#   max_error_rate: 0.5

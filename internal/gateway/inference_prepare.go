@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"gomodel/internal/core"
+	router "gomodel/internal/router"
 )
 
 // PrepareChatRequest resolves workflow/model policy and applies translated request patching.
@@ -35,6 +36,7 @@ type translatedPrepareSpec[Req any, Prepared any] struct {
 	requiredMessage string
 	patchNilMessage string
 	selector        func(Req) (*string, *string)
+	routingOp       router.RoutingOperation // intelligent-routing eligibility; only chat/responses set this
 	patch           func(*InferenceOrchestrator) func(context.Context, Req) (Req, error)
 	valid           func(Req) bool
 	build           func(context.Context, Req, *core.Workflow) Prepared
@@ -44,6 +46,7 @@ var chatPrepareSpec = translatedPrepareSpec[*core.ChatRequest, *PreparedChatRequ
 	requiredMessage: "chat request is required",
 	patchNilMessage: "patched chat request is required",
 	selector:        chatRequestSelector,
+	routingOp:       router.RoutingOpChat,
 	patch:           chatRequestPatch,
 	valid:           validChatRequest,
 	build: func(ctx context.Context, req *core.ChatRequest, workflow *core.Workflow) *PreparedChatRequest {
@@ -55,6 +58,7 @@ var responsesPrepareSpec = translatedPrepareSpec[*core.ResponsesRequest, *Prepar
 	requiredMessage: "responses request is required",
 	patchNilMessage: "patched responses request is required",
 	selector:        responsesRequestSelector,
+	routingOp:       router.RoutingOpResponses,
 	patch:           responsesRequestPatch,
 	valid:           validResponsesRequest,
 	build: func(ctx context.Context, req *core.ResponsesRequest, workflow *core.Workflow) *PreparedResponsesRequest {
@@ -74,7 +78,7 @@ func prepareTranslated[Req any, Prepared any](
 		return zero, core.NewInvalidRequestError(spec.requiredMessage, nil)
 	}
 	model, provider := spec.selector(req)
-	ctx, req, workflow, err := prepareTranslatedRequest(o, ctx, req, meta, model, provider, spec.patch(o), spec.valid, spec.patchNilMessage)
+	ctx, req, workflow, err := prepareTranslatedRequest(o, ctx, req, meta, model, provider, spec.routingOp, spec.patch(o), spec.valid, spec.patchNilMessage)
 	if err != nil {
 		return zero, err
 	}
@@ -88,11 +92,22 @@ func prepareTranslatedRequest[Req any](
 	meta RequestMeta,
 	model,
 	provider *string,
+	routingOp router.RoutingOperation,
 	patch func(context.Context, Req) (Req, error),
 	valid func(Req) bool,
 	patchNilMessage string,
 ) (context.Context, Req, *core.Workflow, error) {
 	ctx = contextWithRequestID(ctx, meta.RequestID)
+
+	// When the caller did not pin a provider, mark this request as eligible
+	// for intelligent routing. Only chat and responses endpoints set the
+	// eligibility flag; audio, realtime, embeddings, and other capability-
+	// gated endpoints never call this function, so they are structurally
+	// prevented from participating.
+	if provider != nil && strings.TrimSpace(*provider) == "" && routingOp != "" {
+		ctx = router.WithRoutingEligible(ctx, routingOp)
+	}
+
 	workflow, err := o.ensureTranslatedRequestWorkflow(ctx, meta.Workflow, meta.RequestID, meta.Endpoint, model, provider)
 	if err != nil {
 		var zero Req
